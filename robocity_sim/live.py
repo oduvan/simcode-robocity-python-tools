@@ -43,19 +43,37 @@ def _mcp_call(server: str, token: str, name: str, arguments: dict) -> dict:
 
 
 def _extract_world_state(rpc: dict) -> dict:
-    """Pull the world-state document out of an MCP tools/call result."""
+    """Pull the world-state document out of an MCP tools/call result.
+
+    get_world_state wraps the module's world doc with a little city context:
+    ``{slug, type, deploy_status, state: {tick, world, robots, buildings, tiles,
+    discovered, stats}}``. The actual snapshot is under ``state``.
+    """
+    if rpc.get("error"):
+        raise ValueError(f"MCP error: {rpc['error']}")
     result = rpc.get("result", rpc)
     # MCP returns content as a list of {type:"text", text:"...json..."} blocks.
+    doc = None
     content = result.get("content") if isinstance(result, dict) else None
     if isinstance(content, list):
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 try:
-                    return json.loads(block["text"])
+                    doc = json.loads(block["text"])
+                    break
                 except Exception:
                     continue
-    if isinstance(result, dict) and "world" in result:
-        return result
+    if doc is None and isinstance(result, dict):
+        doc = result
+    if isinstance(doc, dict):
+        # Unwrap the relayDoc envelope, then accept a bare snapshot too.
+        if isinstance(doc.get("state"), dict) and "world" in doc["state"]:
+            return doc["state"]
+        if "world" in doc and ("robots" in doc or "buildings" in doc):
+            return doc
+        note = doc.get("note")
+        if note:  # e.g. "this city has no live state yet (still starting/paused)"
+            raise ValueError(f"no usable world state for this city: {note}")
     raise ValueError("could not parse world state from MCP response")
 
 
