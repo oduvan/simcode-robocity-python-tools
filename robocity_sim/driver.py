@@ -58,6 +58,7 @@ class SimResult:
     feed: List[tuple] = field(default_factory=list)  # (tick, line)
     summary: Dict = field(default_factory=dict)
     robots_destroyed: int = 0
+    errors: List[dict] = field(default_factory=list)  # handler exceptions
 
 
 class Simulation:
@@ -74,6 +75,12 @@ class Simulation:
         self.rt = Runtime(self.redis, city).install()
         self._pending: List[Intent] = []
         self.robots_destroyed = 0
+        # Handler exceptions are isolated by the SDK runtime (a bad handler must
+        # not kill the loop) exactly as on the server — but for LOCAL debugging we
+        # surface them instead of swallowing them silently. The runtime publishes
+        # them on the log channel; we drain those here.
+        self.errors: List[dict] = []
+        self._pub_seen = 0
 
     def _publish_state(self, tick: int, seq: int) -> None:
         state = self.mod.build_state(tick, seq)
@@ -113,7 +120,25 @@ class Simulation:
             if env.get("event") == "robot_destroyed":
                 self.robots_destroyed += 1
 
+        self._collect_errors()
         return self.mod.drain_feed()
+
+    def _collect_errors(self) -> None:
+        """Drain handler-exception records the runtime published on the log
+        channel, so a crashing controller is reported rather than silently
+        ignored (the whole point of testing locally)."""
+        pub = self.redis.published
+        while self._pub_seen < len(pub):
+            channel, message = pub[self._pub_seen]
+            self._pub_seen += 1
+            if not str(channel).endswith(".log"):
+                continue
+            try:
+                rec = json.loads(message)
+            except Exception:
+                continue
+            if isinstance(rec, dict) and rec.get("level") == "error":
+                self.errors.append(rec)
 
     def summary(self, tick: int) -> Dict:
         wd = self.mod.wd
@@ -131,6 +156,7 @@ class Simulation:
             "spots_found": st["spots_found"],
             "discovered_cells": len(wd.discovered),
             "robots_destroyed": self.robots_destroyed,
+            "handler_errors": len(self.errors),
         }
 
 
@@ -161,4 +187,5 @@ def run_simulation(controller_path: str, ticks: int = 500,
             on_tick(t, feed)
     result.summary = sim.summary(ticks)
     result.robots_destroyed = sim.robots_destroyed
+    result.errors = sim.errors
     return result

@@ -56,6 +56,22 @@ buildings, run`, registers `@on.idle` etc., and the tool imports it (so
   **public** snapshot, which is lossy (fog, hidden richness). Treat that mode as an
   **approximate** preview, not an exact continuation.
 
+## Handler errors & subscription fidelity
+
+- **Crashes are surfaced, not swallowed.** If a handler raises on an event, the
+  run continues (one bad event can't kill the loop, exactly like the server) but
+  the tool **reports it**: a `⚠ N handler error(s)` block on stderr, a
+  `handler errors` line in the SUMMARY, an `errors[]` array in `--json`, and a
+  **non-zero exit code**. So a bug in your controller shows up here instead of
+  after a push. (Watch the exit code / the `handler_errors` count in a loop.)
+- **Subscriptions behave like the server** for the normal pattern (handlers
+  registered at import via `@on.idle` etc.), including `once` and `idle`
+  re-emission (a passive handler keeps getting events; robots never permanently
+  stall). The ONLY server behavior not reproduced: the *instantaneous replay* the
+  server sends when a handler subscribes to `spawn`/`idle` **mid-run** — here that
+  handler instead receives the next emission a few ticks later. Equivalent for
+  virtually every controller.
+
 ## Workflow for iterating on a city controller
 
 1. Edit the city's `main.py`.

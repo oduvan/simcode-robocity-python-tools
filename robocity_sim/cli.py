@@ -44,6 +44,9 @@ def _print_summary(summary: dict) -> None:
     print(f"  metal (mined/stored): {metal.get('mined', 0)} / {metal.get('stored', 0)}")
     print(f"  spots found       : {summary.get('spots_found')}")
     print(f"  discovered cells  : {summary.get('discovered_cells')}")
+    errs = summary.get("handler_errors", 0)
+    if errs:
+        print(f"  handler errors    : {errs}  <-- your controller raised (see above)")
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -80,18 +83,42 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    errors = [
+        {
+            "event": e.get("event"),
+            "robot": e.get("robot"),
+            "handler": e.get("handler"),
+            "error": (e.get("error") or "").strip().splitlines()[-1] if e.get("error") else "",
+            "traceback": e.get("error", ""),
+        }
+        for e in result.errors
+    ]
+
     if args.json:
         out = {
             "seed": result.seed,
             "ticks": result.ticks,
             "city": result.city,
             "summary": result.summary,
+            "errors": errors,
             "feed": [{"tick": t, "line": line} for t, line in result.feed],
         }
         print(json.dumps(out, indent=2))
     else:
+        if errors:
+            # Your controller crashed on some events. The SDK isolates handler
+            # exceptions (so one bad event doesn't kill the run) — surfaced here
+            # so you actually SEE the bug locally instead of after a push.
+            print("", file=sys.stderr)
+            print(f"⚠ {len(errors)} handler error(s) — your controller raised:", file=sys.stderr)
+            for e in errors[:5]:
+                where = f"{e['handler']} on '{e['event']}'" + (f" (robot {e['robot']})" if e["robot"] else "")
+                print(f"  - {where}: {e['error']}", file=sys.stderr)
+            if len(errors) > 5:
+                print(f"  … and {len(errors) - 5} more (use --json for full tracebacks)", file=sys.stderr)
         _print_summary(result.summary)
-    return 0
+    # Non-zero exit when the controller raised, so CI / an AI loop notices.
+    return 3 if errors else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
