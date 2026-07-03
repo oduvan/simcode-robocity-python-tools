@@ -1,0 +1,875 @@
+{
+  "seed": 7,
+  "region": 25,
+  "config": {
+    "spot_density": 0.05,
+    "spot_rich_min": 50,
+    "spot_rich_max": 200,
+    "initial_reveal": 4,
+    "move_reveal": 5,
+    "fly_speed": 3,
+    "energy_cap": 100,
+    "energy_per_distance": 1,
+    "charge_rate": 10,
+    "carry_capacity": 10,
+    "num_start_robots": 2,
+    "start_ore": 6,
+    "start_metal": 3,
+    "produced_ore": 6,
+    "produced_metal": 3,
+    "mining_speed": 1,
+    "mining_storage_cap": 12,
+    "storage_cap": 500,
+    "base_storage_cap": 200,
+    "idle_resend_ticks": 3,
+    "mining_recipe": {
+      "ore": 6,
+      "metal": 3,
+      "build_ticks": 4
+    },
+    "storage_recipe": {
+      "ore": 3,
+      "metal": 0,
+      "build_ticks": 3
+    },
+    "flying_station_recipe": {
+      "ore": 4,
+      "metal": 2,
+      "build_ticks": 3
+    },
+    "robot_recipe": {
+      "ore": 12,
+      "metal": 6,
+      "build_ticks": 8
+    }
+  },
+  "spots": [
+    {
+      "x": -25,
+      "y": -16,
+      "resource": "ore",
+      "remaining": 109
+    },
+    {
+      "x": -24,
+      "y": 1,
+      "resource": "metal",
+      "remaining": 145
+    },
+    {
+      "x": -24,
+      "y": 5,
+      "resource": "ore",
+      "remaining": 54
+    },
+    {
+      "x": -24,
+      "y": 11,
+      "resource": "metal",
+      "remaining": 197
+    },
+    {
+      "x": -23,
+      "y": -14,
+      "resource": "metal",
+      "remaining": 66
+    },
+    {
+      "x": -23,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 67
+    },
+    {
+      "x": -23,
+      "y": 5,
+      "resource": "metal",
+      "remaining": 64
+    },
+    {
+      "x": -23,
+      "y": 15,
+      "resource": "ore",
+      "remaining": 131
+    },
+    {
+      "x": -22,
+      "y": -16,
+      "resource": "metal",
+      "remaining": 179
+    },
+    {
+      "x": -22,
+      "y": 0,
+      "resource": "ore",
+      "remaining": 61
+    },
+    {
+      "x": -21,
+      "y": -23,
+      "resource": "metal",
+      "remaining": 95
+    },
+    {
+      "x": -21,
+      "y": 14,
+      "resource": "metal",
+      "remaining": 90
+    },
+    {
+      "x": -20,
+      "y": -4,
+      "resource": "ore",
+      "remaining": 104
+    },
+    {
+      "x": -20,
+      "y": 11,
+      "resource": "ore",
+      "remaining": 179
+    },
+    {
+      "x": -19,
+      "y": -7,
+      "resource": "ore",
+      "remaining": 139
+    },
+    {
+      "x": -19,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 184
+    },
+    {
+      "x": -19,
+      "y": 3,
+      "resource": "ore",
+      "remaining": 167
+    },
+    {
+      "x": -19,
+      "y": 19,
+      "resource": "metal",
+      "remaining": 143
+    },
+    {
+      "x": -19,
+      "y": 24,
+      "resource": "ore",
+      "remaining": 117
+    },
+    {
+      "x": -18,
+      "y": -14,
+      "resource": "ore",
+      "remaining": 72
+    },
+    {
+      "x": -18,
+      "y": -12,
+      "resource": "metal",
+      "remaining": 89
+    },
+    {
+      "x": -17,
+      "y": 8,
+      "resource": "ore",
+      "remaining": 98
+    },
+    {
+      "x": -17,
+      "y": 13,
+      "resource": "metal",
+      "remaining": 148
+    },
+    {
+      "x": -17,
+      "y": 15,
+      "resource": "ore",
+      "remaining": 130
+    },
+    {
+      "x": -17,
+      "y": 23,
+      "resource": "metal",
+      "remaining": 164
+    },
+    {
+      "x": -16,
+      "y": -21,
+      "resource": "metal",
+      "remaining": 190
+    },
+    {
+      "x": -16,
+      "y": -17,
+      "resource": "metal",
+      "remaining": 130
+    },
+    {
+      "x": -16,
+      "y": 11,
+      "resource": "metal",
+      "remaining": 145
+    },
+    {
+      "x": -16,
+      "y": 25,
+      "resource": "metal",
+      "remaining": 159
+    },
+    {
+      "x": -15,
+      "y": -1,
+      "resource": "ore",
+      "remaining": 190
+    },
+    {
+      "x": -15,
+      "y": 1,
+      "resource": "ore",
+      "remaining": 131
+    },
+    {
+      "x": -15,
+      "y": 12,
+      "resource": "metal",
+      "remaining": 88
+    },
+    {
+      "x": -15,
+      "y": 22,
+      "resource": "metal",
+      "remaining": 88
+    },
+    {
+      "x": -14,
+      "y": -16,
+      "resource": "metal",
+      "remaining": 119
+    },
+    {
+      "x": -14,
+      "y": -3,
+      "resource": "metal",
+      "remaining": 191
+    },
+    {
+      "x": -13,
+      "y": -12,
+      "resource": "metal",
+      "remaining": 53
+    },
+    {
+      "x": -13,
+      "y": -11,
+      "resource": "metal",
+      "remaining": 139
+    },
+    {
+      "x": -13,
+      "y": -9,
+      "resource": "metal",
+      "remaining": 78
+    },
+    {
+      "x": -12,
+      "y": 10,
+      "resource": "ore",
+      "remaining": 84
+    },
+    {
+      "x": -11,
+      "y": -25,
+      "resource": "ore",
+      "remaining": 71
+    },
+    {
+      "x": -10,
+      "y": -9,
+      "resource": "ore",
+      "remaining": 193
+    },
+    {
+      "x": -10,
+      "y": 12,
+      "resource": "ore",
+      "remaining": 143
+    },
+    {
+      "x": -10,
+      "y": 16,
+      "resource": "ore",
+      "remaining": 99
+    },
+    {
+      "x": -10,
+      "y": 19,
+      "resource": "metal",
+      "remaining": 68
+    },
+    {
+      "x": -9,
+      "y": 24,
+      "resource": "metal",
+      "remaining": 144
+    },
+    {
+      "x": -8,
+      "y": 25,
+      "resource": "ore",
+      "remaining": 198
+    },
+    {
+      "x": -7,
+      "y": 5,
+      "resource": "metal",
+      "remaining": 150
+    },
+    {
+      "x": -7,
+      "y": 18,
+      "resource": "metal",
+      "remaining": 106
+    },
+    {
+      "x": -7,
+      "y": 20,
+      "resource": "ore",
+      "remaining": 157
+    },
+    {
+      "x": -6,
+      "y": -12,
+      "resource": "ore",
+      "remaining": 74
+    },
+    {
+      "x": -6,
+      "y": 6,
+      "resource": "ore",
+      "remaining": 137
+    },
+    {
+      "x": -6,
+      "y": 17,
+      "resource": "metal",
+      "remaining": 95
+    },
+    {
+      "x": -6,
+      "y": 25,
+      "resource": "metal",
+      "remaining": 183
+    },
+    {
+      "x": -5,
+      "y": -13,
+      "resource": "ore",
+      "remaining": 85
+    },
+    {
+      "x": -5,
+      "y": -6,
+      "resource": "metal",
+      "remaining": 137
+    },
+    {
+      "x": -5,
+      "y": -5,
+      "resource": "metal",
+      "remaining": 60
+    },
+    {
+      "x": -4,
+      "y": -21,
+      "resource": "ore",
+      "remaining": 149
+    },
+    {
+      "x": -4,
+      "y": -15,
+      "resource": "ore",
+      "remaining": 130
+    },
+    {
+      "x": -4,
+      "y": 25,
+      "resource": "ore",
+      "remaining": 183
+    },
+    {
+      "x": -3,
+      "y": 6,
+      "resource": "metal",
+      "remaining": 180
+    },
+    {
+      "x": -3,
+      "y": 24,
+      "resource": "metal",
+      "remaining": 109
+    },
+    {
+      "x": -2,
+      "y": -16,
+      "resource": "ore",
+      "remaining": 108
+    },
+    {
+      "x": -2,
+      "y": -3,
+      "resource": "ore",
+      "remaining": 57
+    },
+    {
+      "x": -2,
+      "y": 23,
+      "resource": "metal",
+      "remaining": 197
+    },
+    {
+      "x": -1,
+      "y": -5,
+      "resource": "ore",
+      "remaining": 107
+    },
+    {
+      "x": -1,
+      "y": 8,
+      "resource": "metal",
+      "remaining": 159
+    },
+    {
+      "x": -1,
+      "y": 17,
+      "resource": "metal",
+      "remaining": 178
+    },
+    {
+      "x": -1,
+      "y": 22,
+      "resource": "metal",
+      "remaining": 147
+    },
+    {
+      "x": 0,
+      "y": 10,
+      "resource": "metal",
+      "remaining": 151
+    },
+    {
+      "x": 1,
+      "y": -24,
+      "resource": "metal",
+      "remaining": 145
+    },
+    {
+      "x": 1,
+      "y": -22,
+      "resource": "metal",
+      "remaining": 159
+    },
+    {
+      "x": 1,
+      "y": -17,
+      "resource": "metal",
+      "remaining": 178
+    },
+    {
+      "x": 1,
+      "y": -8,
+      "resource": "metal",
+      "remaining": 194
+    },
+    {
+      "x": 1,
+      "y": 5,
+      "resource": "ore",
+      "remaining": 107
+    },
+    {
+      "x": 1,
+      "y": 22,
+      "resource": "ore",
+      "remaining": 114
+    },
+    {
+      "x": 2,
+      "y": -7,
+      "resource": "ore",
+      "remaining": 83
+    },
+    {
+      "x": 4,
+      "y": -25,
+      "resource": "ore",
+      "remaining": 174
+    },
+    {
+      "x": 4,
+      "y": -17,
+      "resource": "ore",
+      "remaining": 103
+    },
+    {
+      "x": 4,
+      "y": 0,
+      "resource": "metal",
+      "remaining": 54
+    },
+    {
+      "x": 5,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 180
+    },
+    {
+      "x": 5,
+      "y": 0,
+      "resource": "metal",
+      "remaining": 164
+    },
+    {
+      "x": 5,
+      "y": 5,
+      "resource": "metal",
+      "remaining": 60
+    },
+    {
+      "x": 5,
+      "y": 13,
+      "resource": "ore",
+      "remaining": 85
+    },
+    {
+      "x": 6,
+      "y": -25,
+      "resource": "metal",
+      "remaining": 148
+    },
+    {
+      "x": 6,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 137
+    },
+    {
+      "x": 6,
+      "y": -5,
+      "resource": "ore",
+      "remaining": 131
+    },
+    {
+      "x": 6,
+      "y": -4,
+      "resource": "metal",
+      "remaining": 119
+    },
+    {
+      "x": 6,
+      "y": -3,
+      "resource": "ore",
+      "remaining": 73
+    },
+    {
+      "x": 6,
+      "y": 23,
+      "resource": "metal",
+      "remaining": 66
+    },
+    {
+      "x": 7,
+      "y": -5,
+      "resource": "metal",
+      "remaining": 150
+    },
+    {
+      "x": 7,
+      "y": 2,
+      "resource": "ore",
+      "remaining": 169
+    },
+    {
+      "x": 8,
+      "y": -17,
+      "resource": "metal",
+      "remaining": 93
+    },
+    {
+      "x": 8,
+      "y": 6,
+      "resource": "ore",
+      "remaining": 166
+    },
+    {
+      "x": 8,
+      "y": 22,
+      "resource": "ore",
+      "remaining": 189
+    },
+    {
+      "x": 9,
+      "y": -8,
+      "resource": "metal",
+      "remaining": 105
+    },
+    {
+      "x": 10,
+      "y": -20,
+      "resource": "metal",
+      "remaining": 128
+    },
+    {
+      "x": 10,
+      "y": 7,
+      "resource": "ore",
+      "remaining": 74
+    },
+    {
+      "x": 11,
+      "y": -18,
+      "resource": "metal",
+      "remaining": 133
+    },
+    {
+      "x": 11,
+      "y": 25,
+      "resource": "ore",
+      "remaining": 71
+    },
+    {
+      "x": 12,
+      "y": -3,
+      "resource": "metal",
+      "remaining": 150
+    },
+    {
+      "x": 13,
+      "y": 9,
+      "resource": "metal",
+      "remaining": 78
+    },
+    {
+      "x": 13,
+      "y": 11,
+      "resource": "metal",
+      "remaining": 139
+    },
+    {
+      "x": 14,
+      "y": 0,
+      "resource": "metal",
+      "remaining": 198
+    },
+    {
+      "x": 14,
+      "y": 11,
+      "resource": "ore",
+      "remaining": 67
+    },
+    {
+      "x": 15,
+      "y": -1,
+      "resource": "ore",
+      "remaining": 131
+    },
+    {
+      "x": 15,
+      "y": 1,
+      "resource": "ore",
+      "remaining": 190
+    },
+    {
+      "x": 16,
+      "y": 1,
+      "resource": "metal",
+      "remaining": 123
+    },
+    {
+      "x": 17,
+      "y": -23,
+      "resource": "metal",
+      "remaining": 164
+    },
+    {
+      "x": 17,
+      "y": -15,
+      "resource": "ore",
+      "remaining": 130
+    },
+    {
+      "x": 17,
+      "y": -13,
+      "resource": "metal",
+      "remaining": 148
+    },
+    {
+      "x": 17,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 165
+    },
+    {
+      "x": 18,
+      "y": 14,
+      "resource": "ore",
+      "remaining": 72
+    },
+    {
+      "x": 19,
+      "y": -19,
+      "resource": "metal",
+      "remaining": 143
+    },
+    {
+      "x": 19,
+      "y": -3,
+      "resource": "ore",
+      "remaining": 167
+    },
+    {
+      "x": 19,
+      "y": 7,
+      "resource": "ore",
+      "remaining": 139
+    },
+    {
+      "x": 19,
+      "y": 12,
+      "resource": "metal",
+      "remaining": 172
+    },
+    {
+      "x": 19,
+      "y": 24,
+      "resource": "metal",
+      "remaining": 107
+    },
+    {
+      "x": 20,
+      "y": 4,
+      "resource": "ore",
+      "remaining": 104
+    },
+    {
+      "x": 20,
+      "y": 24,
+      "resource": "metal",
+      "remaining": 135
+    },
+    {
+      "x": 21,
+      "y": -16,
+      "resource": "metal",
+      "remaining": 63
+    },
+    {
+      "x": 21,
+      "y": -6,
+      "resource": "ore",
+      "remaining": 119
+    },
+    {
+      "x": 21,
+      "y": 23,
+      "resource": "metal",
+      "remaining": 95
+    },
+    {
+      "x": 22,
+      "y": -12,
+      "resource": "metal",
+      "remaining": 151
+    },
+    {
+      "x": 22,
+      "y": -4,
+      "resource": "ore",
+      "remaining": 103
+    },
+    {
+      "x": 22,
+      "y": 8,
+      "resource": "metal",
+      "remaining": 157
+    },
+    {
+      "x": 23,
+      "y": -18,
+      "resource": "metal",
+      "remaining": 56
+    },
+    {
+      "x": 23,
+      "y": -15,
+      "resource": "ore",
+      "remaining": 131
+    },
+    {
+      "x": 23,
+      "y": -5,
+      "resource": "metal",
+      "remaining": 64
+    },
+    {
+      "x": 24,
+      "y": -21,
+      "resource": "metal",
+      "remaining": 109
+    },
+    {
+      "x": 25,
+      "y": -4,
+      "resource": "ore",
+      "remaining": 190
+    },
+    {
+      "x": 25,
+      "y": 10,
+      "resource": "ore",
+      "remaining": 177
+    },
+    {
+      "x": 25,
+      "y": 12,
+      "resource": "ore",
+      "remaining": 175
+    },
+    {
+      "x": 25,
+      "y": 24,
+      "resource": "metal",
+      "remaining": 85
+    }
+  ],
+  "robots": [
+    {
+      "id": "r1",
+      "x": 1,
+      "y": 0,
+      "energy": 100,
+      "ore": 6,
+      "metal": 3,
+      "cap": 10
+    },
+    {
+      "id": "r2",
+      "x": -1,
+      "y": 0,
+      "energy": 100,
+      "ore": 6,
+      "metal": 3,
+      "cap": 10
+    }
+  ],
+  "buildings": [
+    {
+      "id": "base-1",
+      "type": "base",
+      "x": 0,
+      "y": 0,
+      "cap": 200
+    }
+  ]
+}
