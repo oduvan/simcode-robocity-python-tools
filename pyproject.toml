@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simcode-robocity-tools"
+version = "0.1.0"
+description = "Local offline simulator/test tool for the SimCode Robot City Builder game."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "SimCode" }]
+keywords = ["simcode", "robocity", "simulator", "game", "testing"]
+# No required runtime dependencies — stdlib only (urllib for --from-live).
+dependencies = []
+
+[project.scripts]
+robocity-sim = "robocity_sim.cli:main"
+
+[tool.setuptools]
+packages = ["simcode", "robocity_sim"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
