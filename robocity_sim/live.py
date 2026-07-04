@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -75,6 +76,57 @@ def _extract_world_state(rpc: dict) -> dict:
         if note:  # e.g. "this city has no live state yet (still starting/paused)"
             raise ValueError(f"no usable world state for this city: {note}")
     raise ValueError("could not parse world state from MCP response")
+
+
+def parse_repo_slug(url: str) -> Optional[str]:
+    """`git@github.com:owner/repo.git` / `https://github.com/owner/repo(.git)` -> `owner/repo`."""
+    if not url:
+        return None
+    url = url.strip()
+    if url.endswith(".git"):
+        url = url[:-4]
+    if url.startswith("git@") and ":" in url:
+        path = url.split(":", 1)[1]
+    else:
+        path = url.split("://", 1)[-1]
+        path = path.split("/", 1)[1] if "/" in path else path
+    parts = [p for p in path.split("/") if p]
+    return "/".join(parts[-2:]) if len(parts) >= 2 else None
+
+
+def git_repo_slug(directory: str) -> Optional[str]:
+    """The `owner/repo` of the git remote in `directory`, or None (not a repo / no remote)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", directory or ".", "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return parse_repo_slug(out.stdout)
+
+
+def detect_city(server: str, token: str, repo: str) -> Optional[str]:
+    """Ask the server (list_cities) for the city slug linked to `repo`, or None."""
+    rpc = _mcp_call(server, token, "list_cities", {})
+    result = rpc.get("result", rpc)
+    doc = None
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                try:
+                    doc = json.loads(block["text"])
+                    break
+                except Exception:
+                    continue
+    cities = (doc or {}).get("cities", []) if isinstance(doc, dict) else []
+    for c in cities:
+        if (c.get("repo") or "").lower() == repo.lower():
+            return c.get("slug")
+    return None
 
 
 def build_sim_from_live(city_slug: str,

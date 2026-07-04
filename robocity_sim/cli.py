@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import List
 
@@ -54,21 +55,54 @@ def cmd_run(args: argparse.Namespace) -> int:
     seed = args.seed if args.seed is not None else CANONICAL_SEED
     city = "local"
 
-    if args.from_live:
-        if not args.city:
-            print("error: --from-live requires --city <slug>", file=sys.stderr)
+    # DEFAULT = test from your city's CURRENT position: resolve which city this is
+    # (explicit --city, else auto-detect from the repo's git remote), fetch its
+    # live state, and run your new code forward from there. --fresh forces a
+    # clean seed-0 world instead (for a brand-new city or a deterministic baseline).
+    from .live import build_sim_from_live, git_repo_slug, detect_city
+
+    token = os.environ.get("SIMCODE_TOKEN")
+    live_city = None
+    detect_note = None
+    if not args.fresh:
+        if args.city:
+            live_city = args.city
+        elif token:
+            repo = git_repo_slug(os.path.dirname(os.path.abspath(args.controller)))
+            if not repo:
+                detect_note = "not inside a git repo with a remote"
+            else:
+                try:
+                    live_city = detect_city(args.server, token, repo)
+                    if not live_city:
+                        detect_note = f"no city on {args.server} is linked to {repo}"
+                except Exception as exc:
+                    detect_note = f"could not list your cities ({exc})"
+        else:
+            detect_note = "SIMCODE_TOKEN not set"
+
+    if live_city:
+        if not token:
+            print("error: testing from current state needs SIMCODE_TOKEN "
+                  "(export it, or use --fresh)", file=sys.stderr)
             return 2
         try:
-            from .live import build_sim_from_live
-            sim = build_sim_from_live(args.city, server=args.server)
+            sim = build_sim_from_live(live_city, server=args.server, token=token)
         except Exception as exc:  # network / auth / parse errors
-            print(f"error: --from-live failed: {exc}", file=sys.stderr)
+            print(f"error: fetching '{live_city}' state failed: {exc} "
+                  f"(use --fresh to run a clean seed-0 world instead)", file=sys.stderr)
             return 1
-        city = args.city
+        city = live_city
         seed = sim.seed
-        if not args.quiet and not args.json:
-            print(f"[from-live] seeded from {args.city} @ {args.server} "
+        if not args.json:
+            print(f"[live] testing '{live_city}' from its CURRENT state "
                   f"(approximate preview) — seed {seed}")
+    elif not args.json:
+        why = f" ({detect_note})" if detect_note and not args.fresh else ""
+        print(f"[fresh] seed {seed}, tick 0 — a clean world, not your city's current state{why}")
+        if detect_note and not args.fresh:
+            print("        set SIMCODE_TOKEN and run inside your city repo to test from where "
+                  "your city actually is, or pass --city <slug>.")
 
     on_tick = None
     if not args.quiet and not args.json:
@@ -96,6 +130,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.json:
         out = {
+            "mode": "live" if live_city else "fresh",
             "seed": result.seed,
             "ticks": result.ticks,
             "city": result.city,
@@ -136,11 +171,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     run.add_argument("--quiet", action="store_true",
                      help="suppress the per-tick feed; print only the summary")
+    run.add_argument("--fresh", action="store_true",
+                     help="ignore the live city; run a clean seed-0 world (a new city / a "
+                          "deterministic baseline). Default is to test from your city's CURRENT state.")
+    run.add_argument("--city", default=None,
+                     help="city slug to test against (default: auto-detected from this repo's git remote)")
     run.add_argument("--from-live", action="store_true",
-                     help="seed the world from a live city (approximate preview)")
-    run.add_argument("--city", default=None, help="city slug (with --from-live)")
+                     help="(deprecated; live is the default now) accepted for compatibility")
     run.add_argument("--server", default="https://robocity.lyabah.com",
-                     help="MCP server base URL (with --from-live)")
+                     help="MCP server base URL")
     run.set_defaults(func=cmd_run)
     return p
 
