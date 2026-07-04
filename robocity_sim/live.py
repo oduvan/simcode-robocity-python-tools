@@ -202,7 +202,7 @@ def _seed_world_from_snapshot(mod: Module, snap: dict) -> None:
     wd.pending_spawn.clear()
 
     # Tiles / spots (mark discovered + set spot richness where visible).
-    for t in snap.get("tiles", []):
+    for t in snap.get("tiles") or []:
         x, y = int(t["x"]), int(t["y"])
         cl = wd.cell_at(x, y)
         sp = t.get("spot")
@@ -213,14 +213,14 @@ def _seed_world_from_snapshot(mod: Module, snap: dict) -> None:
             cl.spot = None
         wd.discovered[(x, y)] = True
         wd.grow_bounds(x, y)
-    for c in snap.get("discovered", []):
+    for c in snap.get("discovered") or []:
         x, y = int(c[0]), int(c[1])
         wd.cell_at(x, y)
         wd.discovered[(x, y)] = True
         wd.grow_bounds(x, y)
 
     # Buildings.
-    for b in snap.get("buildings", []):
+    for b in snap.get("buildings") or []:
         pos = b.get("pos", [0, 0])
         nb = Building(id=b["id"], typ=b.get("type", "storage"),
                       pos=(int(pos[0]), int(pos[1])),
@@ -247,7 +247,7 @@ def _seed_world_from_snapshot(mod: Module, snap: dict) -> None:
         wd.add_building(nb)
 
     # Robots.
-    for r in snap.get("robots", []):
+    for r in snap.get("robots") or []:
         pos = r.get("pos", [0, 0])
         inv = r.get("inventory", {}) or {}
         nr = Robot(id=r["id"], typ=r.get("type", "builder"),
