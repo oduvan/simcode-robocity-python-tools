@@ -15,28 +15,26 @@ pip install "git+https://github.com/oduvan/simcode-robocity-python-tools"
 
 ## Run your controller
 
-**By default it tests from your city's CURRENT state** — the whole point is
-"if I push this *now*, does it do something sensible?". Run it **inside your city
-repo** with your MCP token set; the tool auto-detects which city this repo is
-(via the git remote), fetches that city's live state, and runs your new code
-forward from there.
+**It always tests your code against your city's CURRENT state** — the whole point
+is "if I push this *now*, does it work?". Run it **inside your city repo** with
+your MCP token set; the tool auto-detects which city this repo is (via the git
+remote), fetches that city's current state, and runs your code against it.
 
 ```bash
 export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run main.py               # ← test from your city's CURRENT state (default)
+robocity-sim run main.py               # ← test against this city's CURRENT state
 robocity-sim run main.py --ticks 300   # shorter horizon
 robocity-sim run main.py --json        # machine-readable (parse this)
-
-robocity-sim run main.py --fresh       # clean seed-0 world (a brand-new city / a baseline)
 robocity-sim run main.py --city other  # test against a specific city slug
 ```
 
-The first output line tells you the mode: `[live] testing '<slug>' from its
-CURRENT state` or `[fresh] seed 7, tick 0`. If auto-detect can't resolve a city
-(no token, not in the repo, no linked city) it falls back to `[fresh]` and says
-why. It's fine that a live run is **approximate** — it's a quick "does it work
-now" check, not a perfect sim; real edge cases surface after you push.
+The first output line is `[<slug>] testing your code against this city's CURRENT
+state`. If it can't resolve a city (no token, not inside the repo, no linked
+city) it **stops with a clear error** — it never silently tests a fake empty
+world. A run is deliberately **approximate**: tiny randomness/timing differences
+from the server are fine — you're checking that your **logic works**, not
+predicting the server exactly. Real edge cases surface after you push.
 
 `main.py` is used **unchanged**: it does `from simcode import on, robots, world,
 buildings, run`, registers `@on.idle` etc., and the tool imports it (so
@@ -68,12 +66,12 @@ buildings, run`, registers `@on.idle` etc., and the tool imports it (so
   richness), and the rules/events/timing mirror the server (intents lag one tick, just
   like production). Parity is maintained against the Go source; if you find a
   divergence in mechanics, treat it as a bug in this tool.
-- The **default (live) mode** seeds from your city's current **public** snapshot,
-  which is slightly lossy (fog-of-war hides undiscovered cells / spot richness, and
-  in-flight command internals aren't carried). So a live run is an **approximate**
-  continuation — perfect for "does my new code do something sensible right now",
-  not a bit-exact forecast. `--fresh` is exact (deterministic seed-0 world) but is
-  a *different* starting point than your running city.
+- It tests against your city's current **public** snapshot (robots, buildings,
+  inventories, energy) plus the full map regenerated from the seed. A run is an
+  **approximate** continuation — small randomness/timing differences from the
+  server are expected and fine. You're checking that your **logic runs correctly**
+  (no crashes, sensible behavior), not forecasting the server bit-for-bit; real
+  edge cases surface after you push.
 
 ## Handler errors & subscription fidelity
 
