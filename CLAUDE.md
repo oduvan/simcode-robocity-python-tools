@@ -59,6 +59,21 @@ buildings, run`, registers `@on.idle` etc., and the tool imports it (so
   developing, not just exploring. The shipped starter only explores, so a fresh run
   of it shows `mined: 0` and `buildings: base=1` — beat that.
 
+## Inspect your city without simulating
+
+Sometimes you just want to *see* your city's live data — not run your code.
+`inspect` is a thin client over the same MCP tools (JSON out, needs `SIMCODE_TOKEN`):
+
+```bash
+robocity-sim inspect             # this city's status (auto-detected from the repo)
+robocity-sim inspect --state     # full current world state (robots, buildings, tiles…)
+robocity-sim inspect --logs 100  # recent activity log lines
+robocity-sim inspect --list      # all your cities
+```
+
+It calls `get_world_status` / `get_world_state` / `get_recent_logs` / `list_cities`
+— the same data MCP returns, straight from the terminal.
+
 ## Important: it's a faithful PREVIEW, not the server
 
 - The engine here is a **re-implementation** of the server's Go engine. World

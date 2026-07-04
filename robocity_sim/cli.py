@@ -141,6 +141,46 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 3 if errors else 0
 
 
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Print a city's live info (state/status/logs) or list your cities — a thin
+    client over the same MCP tools, no simulation. Output is JSON."""
+    from .live import mcp_doc, git_repo_slug, detect_city
+
+    token = os.environ.get("SIMCODE_TOKEN")
+    if not token:
+        print('error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP").', file=sys.stderr)
+        return 2
+
+    try:
+        if args.list:
+            print(json.dumps(mcp_doc(args.server, token, "list_cities", {}), indent=2))
+            return 0
+
+        city = args.city
+        if not city:
+            repo = git_repo_slug(os.getcwd())
+            if not repo:
+                print("error: run this inside your city's git repo, or pass --city <slug>.", file=sys.stderr)
+                return 2
+            city = detect_city(args.server, token, repo)
+            if not city:
+                print(f"error: no city on {args.server} is linked to {repo}.", file=sys.stderr)
+                return 2
+
+        if args.state:
+            doc = mcp_doc(args.server, token, "get_world_state", {"city": city})
+        elif args.logs is not None:
+            doc = mcp_doc(args.server, token, "get_recent_logs", {"city": city, "limit": args.logs})
+        else:  # default: the quick status overview
+            doc = mcp_doc(args.server, token, "get_world_status", {"city": city})
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(doc, indent=2))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="robocity-sim",
@@ -161,6 +201,18 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--server", default="https://robocity.lyabah.com",
                      help="MCP server base URL")
     run.set_defaults(func=cmd_run)
+
+    insp = sub.add_parser(
+        "inspect",
+        help="print your city's live info (state/status/logs) as JSON — like the MCP tools, no sim")
+    insp.add_argument("--state", action="store_true", help="full current world state")
+    insp.add_argument("--logs", nargs="?", type=int, const=100, default=None,
+                      metavar="N", help="recent activity log lines (default 100)")
+    insp.add_argument("--list", action="store_true", help="list your cities (no city needed)")
+    insp.add_argument("--city", default=None,
+                      help="city slug (default: auto-detected from this repo's git remote)")
+    insp.add_argument("--server", default="https://robocity.lyabah.com", help="MCP server base URL")
+    insp.set_defaults(func=cmd_inspect)
     return p
 
 

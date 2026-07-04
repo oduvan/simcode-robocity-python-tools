@@ -129,6 +129,23 @@ def detect_city(server: str, token: str, repo: str) -> Optional[str]:
     return None
 
 
+def mcp_doc(server: str, token: str, name: str, arguments: dict):
+    """Call an MCP tool and return its parsed document (the text content block)."""
+    rpc = _mcp_call(server, token, name, arguments)
+    if rpc.get("error"):
+        raise ValueError(f"MCP error: {rpc['error']}")
+    result = rpc.get("result", rpc)
+    content = result.get("content") if isinstance(result, dict) else None
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                try:
+                    return json.loads(block["text"])
+                except Exception:
+                    return block["text"]
+    return result
+
+
 def build_sim_from_live(city_slug: str,
                         server: str = DEFAULT_SERVER,
                         token: Optional[str] = None,
