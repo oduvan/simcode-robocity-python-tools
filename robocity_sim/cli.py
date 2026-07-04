@@ -51,18 +51,10 @@ def _print_summary(summary: dict) -> None:
 
 def cmd_run(args: argparse.Namespace) -> int:
     # The tool always tests your code against your city's CURRENT state — "would
-    # this work if I deployed it right now?". It fetches the live world for this
-    # city (auto-detected from the repo's git remote, or --city) and runs your
-    # code against it. It can't do that without a token + a resolvable city, so
-    # those are hard errors (no silent fall-back to a fake empty world).
-    from .live import build_sim_from_live, git_repo_slug, detect_city
-
-    token = os.environ.get("SIMCODE_TOKEN")
-    if not token:
-        print('error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP"). '
-              "The tool tests your code against your city's current state, so it needs your token.",
-              file=sys.stderr)
-        return 2
+    # this work if I deployed it right now?". A city's live state is PUBLIC, so
+    # this needs NO token: it resolves the repo -> city slug and fetches the
+    # public snapshot, then runs your code against it.
+    from .live import build_sim_from_live, git_repo_slug, slug_for_repo
 
     city = args.city
     if not city:
@@ -72,9 +64,9 @@ def cmd_run(args: argparse.Namespace) -> int:
                   "or pass --city <slug>.", file=sys.stderr)
             return 2
         try:
-            city = detect_city(args.server, token, repo)
+            city = slug_for_repo(args.server, repo)
         except Exception as exc:
-            print(f"error: couldn't list your cities: {exc}", file=sys.stderr)
+            print(f"error: couldn't reach {args.server}: {exc}", file=sys.stderr)
             return 1
         if not city:
             print(f"error: no city on {args.server} is linked to {repo}. "
@@ -82,8 +74,8 @@ def cmd_run(args: argparse.Namespace) -> int:
             return 2
 
     try:
-        sim = build_sim_from_live(city, server=args.server, token=token)
-    except Exception as exc:  # network / auth / parse errors
+        sim = build_sim_from_live(city, server=args.server)
+    except Exception as exc:  # network / parse errors
         print(f"error: couldn't fetch '{city}' state: {exc}", file=sys.stderr)
         return 1
     seed = sim.seed
@@ -142,43 +134,65 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
-    """Print a city's live info (state/status/logs) or list your cities — a thin
-    client over the same MCP tools, no simulation. Output is JSON."""
-    from .live import mcp_doc, git_repo_slug, detect_city
+    """Print a city's live info (state/status) or its logs / your cities — JSON,
+    no simulation. State & status come from the PUBLIC snapshot (no token);
+    --logs and --list use the authed MCP tools (they need SIMCODE_TOKEN)."""
+    from .live import (mcp_doc, git_repo_slug, slug_for_repo, public_snapshot)
 
     token = os.environ.get("SIMCODE_TOKEN")
-    if not token:
-        print('error: set SIMCODE_TOKEN first (dashboard → "Connect via MCP").', file=sys.stderr)
-        return 2
 
     try:
+        # --list lists YOUR cities → inherently owner-scoped, needs the token.
         if args.list:
+            if not token:
+                print("error: --list needs SIMCODE_TOKEN (it lists your cities).", file=sys.stderr)
+                return 2
             print(json.dumps(mcp_doc(args.server, token, "list_cities", {}), indent=2))
             return 0
 
+        # Resolve the city — token-free via the public repo->slug lookup.
         city = args.city
         if not city:
             repo = git_repo_slug(os.getcwd())
             if not repo:
                 print("error: run this inside your city's git repo, or pass --city <slug>.", file=sys.stderr)
                 return 2
-            city = detect_city(args.server, token, repo)
+            city = slug_for_repo(args.server, repo)
             if not city:
                 print(f"error: no city on {args.server} is linked to {repo}.", file=sys.stderr)
                 return 2
 
-        if args.state:
-            doc = mcp_doc(args.server, token, "get_world_state", {"city": city})
-        elif args.logs is not None:
+        if args.logs is not None:  # recent logs → authed MCP tool
+            if not token:
+                print("error: --logs needs SIMCODE_TOKEN.", file=sys.stderr)
+                return 2
             doc = mcp_doc(args.server, token, "get_recent_logs", {"city": city, "limit": args.logs})
-        else:  # default: the quick status overview
-            doc = mcp_doc(args.server, token, "get_world_status", {"city": city})
+        elif args.state:  # full world state → PUBLIC snapshot (no token)
+            doc = public_snapshot(args.server, city)
+        else:  # default: a compact status derived from the PUBLIC snapshot (no token)
+            doc = _status_from_snapshot(city, public_snapshot(args.server, city))
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     print(json.dumps(doc, indent=2))
     return 0
+
+
+def _status_from_snapshot(city: str, snap: dict) -> dict:
+    by_type: dict = {}
+    for b in snap.get("buildings", []):
+        by_type[b.get("type", "?")] = by_type.get(b.get("type", "?"), 0) + 1
+    return {
+        "city": city,
+        "tick": snap.get("tick"),
+        "seed": (snap.get("world") or {}).get("seed"),
+        "robots": len(snap.get("robots", [])),
+        "buildings": len(snap.get("buildings", [])),
+        "buildings_by_type": by_type,
+        "discovered_cells": len(snap.get("discovered", [])),
+        "stats": snap.get("stats"),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -190,7 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser(
         "run",
-        help="run your controller against your city's CURRENT state (needs SIMCODE_TOKEN)")
+        help="run your controller against your city's CURRENT state (no token needed)")
     run.add_argument("controller", help="path to the controller (main.py)")
     run.add_argument("--ticks", type=int, default=500, help="ticks to simulate (default 500)")
     run.add_argument("--json", action="store_true", help="emit machine-readable JSON")

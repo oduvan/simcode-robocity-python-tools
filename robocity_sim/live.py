@@ -26,6 +26,33 @@ from .world import Robot, Building, Construction, Spot
 DEFAULT_SERVER = "https://robocity.lyabah.com"
 
 
+def _http_get_json(url: str) -> dict:
+    """GET a public (no-auth) JSON endpoint."""
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("Accept", "application/json")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def slug_for_repo(server: str, repo: str) -> Optional[str]:
+    """Resolve a repo ("owner/name") to its city slug via the PUBLIC endpoint —
+    no token. Returns None if no city is linked to that repo."""
+    url = server.rstrip("/") + "/api/city-by-repo/" + repo.strip("/")
+    try:
+        return _http_get_json(url).get("slug")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
+def public_snapshot(server: str, slug: str) -> dict:
+    """Fetch a city's current world snapshot from the PUBLIC endpoint — no token.
+    Same document the shareable live page uses (world/robots/buildings/tiles/…)."""
+    url = server.rstrip("/") + "/api/city/" + slug + "/snapshot"
+    return _http_get_json(url)
+
+
 def _mcp_call(server: str, token: str, name: str, arguments: dict) -> dict:
     url = server.rstrip("/") + "/mcp"
     body = json.dumps({
@@ -148,20 +175,11 @@ def mcp_doc(server: str, token: str, name: str, arguments: dict):
 
 def build_sim_from_live(city_slug: str,
                         server: str = DEFAULT_SERVER,
-                        token: Optional[str] = None,
                         cfg: Optional[Config] = None) -> Simulation:
-    """Fetch the live city and build an approximate Simulation seeded from it."""
-    token = token or os.environ.get("SIMCODE_TOKEN")
-    if not token:
-        raise RuntimeError(
-            "SIMCODE_TOKEN is not set. Export a bearer token for the MCP server:\n"
-            "    export SIMCODE_TOKEN=...   # then re-run --from-live"
-        )
+    """Build a Simulation seeded from a city's CURRENT state — via the PUBLIC
+    snapshot endpoint, so NO token is needed (a city's live state is public)."""
     cfg = cfg or default_config()
-
-    rpc = _mcp_call(server, token, "get_world_state", {"city": city_slug})
-    snap = _extract_world_state(rpc)
-
+    snap = public_snapshot(server, city_slug)
     seed = int(snap.get("world", {}).get("seed", CANONICAL_SEED))
     sim = Simulation(city=city_slug, cfg=cfg, seed=seed)
     _seed_world_from_snapshot(sim.mod, snap)
