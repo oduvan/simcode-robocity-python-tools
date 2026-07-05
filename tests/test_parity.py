@@ -11,7 +11,7 @@ fixture on the platform side with PARITY_WRITE=1 and copy it into this repo.
 import json
 import os
 
-from robocity_sim.config import default_config
+from robocity_sim.config import default_config, BUILDING_BASE
 from robocity_sim.world import World
 
 FIXTURE = os.path.join(os.path.dirname(__file__), "..", "fixtures", "parity-seed7.json")
@@ -63,14 +63,22 @@ def test_initial_robots_match_server():
 
 def test_initial_buildings_match_server():
     fx = _fixture()
-    wd = World(default_config())
+    cfg = default_config()
+    wd = World(cfg)
     wd.generate("parity", fx["seed"])
-    builds = sorted(
-        (
-            {"id": b.id, "type": b.typ, "x": b.pos[0], "y": b.pos[1],
+
+    def form(b):
+        d = {"id": b.id, "type": b.typ, "x": b.pos[0], "y": b.pos[1],
              "w": b.w, "h": b.h, "cap": b.cap}
-            for b in (wd.buildings[i] for i in wd.build_ord)
-        ),
+        # Base only: the objective level + initial quest (matches the Go engine's
+        # omitempty — non-Base buildings carry none of these keys).
+        if b.typ == BUILDING_BASE:
+            d["level"] = b.level
+            d["quest_ore"], d["quest_metal"] = cfg.quest_for(b.level)
+        return d
+
+    builds = sorted(
+        (form(b) for b in (wd.buildings[i] for i in wd.build_ord)),
         key=lambda d: d["id"],
     )
     assert builds == fx["buildings"]
@@ -85,6 +93,7 @@ def test_config_matches_server():
         "carry_capacity", "num_start_robots", "start_ore", "start_metal",
         "produced_ore", "produced_metal", "mining_speed", "mining_storage_cap",
         "storage_cap", "base_storage_cap", "idle_resend_ticks",
+        "quest_base_ore", "quest_base_metal", "quest_growth_num", "quest_growth_den",
     ]
     for name in scalars:
         assert getattr(c, name) == fx[name], f"config.{name} drifted from server"

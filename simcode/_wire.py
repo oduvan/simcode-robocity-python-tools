@@ -54,6 +54,7 @@ EVENTS = [
     "construction_started", "resource_delivered", "construction_complete",
     "spot_depleted", "storage_full", "inventory_full",
     "robot_produced", "robot_destroyed", "charge_complete", "message",
+    "base_level_up", "quest_updated",
 ]
 
 # --- Commands (script -> GAME). Robots fly + haul + charge; world.build is

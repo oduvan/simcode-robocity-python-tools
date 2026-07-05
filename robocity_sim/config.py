@@ -78,6 +78,17 @@ class Config:
     # Reliability.
     idle_resend_ticks: int = 3
 
+    # Base quests (the game objective). The Base starts at level 1; each level
+    # poses a quest = a required amount of raw ore+metal that must accumulate in
+    # the Base's store. When held, the amount is CONSUMED and the Base levels up
+    # to the next, harder quest. questFor(level) escalates the requirement
+    # geometrically from the base amounts by quest_growth_num/quest_growth_den
+    # per level. (Mirror of config.go.)
+    quest_base_ore: int = 40
+    quest_base_metal: int = 20
+    quest_growth_num: int = 3
+    quest_growth_den: int = 2
+
     # Construction recipes per building type (Base is not buildable).
     recipes: Dict[str, Recipe] = field(
         default_factory=lambda: {
@@ -104,6 +115,23 @@ class Config:
         if f is not None and f.w > 0 and f.h > 0:
             return f.w, f.h
         return 1, 1
+
+    def quest_for(self, level: int) -> tuple[int, int]:
+        """The (ore, metal) the Base must accumulate to clear the quest at the
+        given level (level 1 = the base amounts, each subsequent level scaled by
+        quest_growth_num/quest_growth_den). Pure + deterministic integer math, so
+        it reproduces the Go engine exactly. Level < 1 is treated as 1.
+        (Mirror of config.go questFor.)"""
+        if level < 1:
+            level = 1
+        ore, metal = self.quest_base_ore, self.quest_base_metal
+        num, den = self.quest_growth_num, self.quest_growth_den
+        if num <= 0 or den <= 0:
+            return ore, metal
+        for _ in range(1, level):
+            ore = ore * num // den
+            metal = metal * num // den
+        return ore, metal
 
 
 def default_config() -> Config:

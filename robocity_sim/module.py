@@ -34,6 +34,8 @@ EVENT_ROBOT_PRODUCED = "robot_produced"
 EVENT_ROBOT_DESTROYED = "robot_destroyed"
 EVENT_CHARGE_COMPLETE = "charge_complete"
 EVENT_MESSAGE = "message"
+EVENT_BASE_LEVEL_UP = "base_level_up"
+EVENT_QUEST_UPDATED = "quest_updated"
 
 CMD_MOVE_TO = "move_to"
 CMD_PICK_UP = "pick_up"
@@ -155,12 +157,15 @@ class Module:
         self.evbuf: List[dict] = []
         self.feed: List[FeedEvent] = []
         self.tick = 0
+        # Latches the one-time initial quest_updated emission per (re)start.
+        self.quest_announced = False
 
     # --- lifecycle --------------------------------------------------------- #
     def reset_world(self, city: str, seed: int) -> None:
         self.wd = World(self.cfg)
         self.wd.generate(city, seed)
         self.feed = []
+        self.quest_announced = False
 
     # --- emit / feed ------------------------------------------------------- #
     def emit(self, name: str, robot: str, tick: int, payload: Optional[dict]) -> None:
@@ -522,6 +527,10 @@ class Module:
         wd.pending_spawn = []
 
         self._advance_production(tick)
+        # Base quests / leveling (the objective): consume-and-level-up when the
+        # store satisfies the current quest. Runs after production so both compete
+        # for the same reserved store.
+        self._advance_base_quest(tick)
         self._advance_mining(tick)
 
         for rid in list(wd.robot_ord):
@@ -575,6 +584,50 @@ class Module:
                 self.emit(EVENT_ROBOT_PRODUCED, rid, tick, {"robot_id": rid})
                 self.feed_add(FeedEvent(kind=EVENT_ROBOT_PRODUCED, robot=rid))
                 self.emit(EVENT_SPAWN, rid, tick, None)
+
+    def _advance_base_quest(self, tick: int) -> None:
+        """The Base's leveling (the game objective). Announce the current quest
+        once, then — while the Base store satisfies the current quest — CONSUME
+        the required ore+metal and level up, emitting base_level_up +
+        quest_updated. The same store also pays robot production, so quest goods
+        and robots compete for it. (Mirror of buildings.go advanceBaseQuest.)"""
+        b = self.wd.base()
+        if b is None:
+            return
+        if b.level < 1:
+            b.level = 1
+        if not self.quest_announced:
+            self.quest_announced = True
+            req_ore, req_metal = self.cfg.quest_for(b.level)
+            self.emit(EVENT_QUEST_UPDATED, b.id, tick,
+                      {"level": b.level, "requirements": {"ore": req_ore, "metal": req_metal}})
+            self.feed_add(FeedEvent(kind=EVENT_QUEST_UPDATED))
+        # Level up while the store can pay the current quest (loop so a big surplus
+        # can clear multiple levels in one tick; the requirement grows each level).
+        while True:
+            req_ore, req_metal = self.cfg.quest_for(b.level)
+            if b.ore < req_ore or b.metal < req_metal:
+                break
+            b.ore -= req_ore
+            b.metal -= req_metal
+            b.level += 1
+            next_ore, next_metal = self.cfg.quest_for(b.level)
+            self.emit(EVENT_BASE_LEVEL_UP, b.id, tick,
+                      {"level": b.level, "quest": {"ore": next_ore, "metal": next_metal}})
+            self.feed_add(FeedEvent(kind=EVENT_BASE_LEVEL_UP, amount=b.level))
+            self.emit(EVENT_QUEST_UPDATED, b.id, tick,
+                      {"level": b.level, "requirements": {"ore": next_ore, "metal": next_metal}})
+            self.feed_add(FeedEvent(kind=EVENT_QUEST_UPDATED))
+
+    def objective(self) -> str:
+        """The game-agnostic one-line goal summary (Base level + next quest).
+        Empty when there is no Base. (Mirror of module.go objective.)"""
+        b = self.wd.base()
+        if b is None:
+            return ""
+        lvl = b.level if b.level >= 1 else 1
+        ore, metal = self.cfg.quest_for(lvl)
+        return f"⭐ Base level {lvl} — next: {ore} ore + {metal} metal"
 
     def _advance_mining(self, tick: int) -> None:
         wd = self.wd
@@ -669,6 +722,15 @@ class Module:
                 "progress": float(b.prod_progress) / float(denom),
                 "queued": b.prod_queue,
             }
+            # Leveling: the Base's current level + quest (required vs progress).
+            # This is the game objective; only the Base carries it.
+            lvl = b.level if b.level >= 1 else 1
+            req_ore, req_metal = self.cfg.quest_for(lvl)
+            bf["level"] = lvl
+            bf["quest"] = {
+                "required": {"ore": req_ore, "metal": req_metal},
+                "progress": {"ore": min(b.ore, req_ore), "metal": min(b.metal, req_metal)},
+            }
         if b.status == STATUS_CONSTRUCTING and b.cons is not None:
             bf["construction"] = {
                 "required": {"ore": b.cons.req_ore, "metal": b.cons.req_metal},
@@ -730,6 +792,8 @@ class Module:
             "tiles": tiles,
             "discovered": [[c[0], c[1]] for c in cells],
             "stats": self.stats(),
+            # Game-agnostic goal summary the shell renders in the topbar.
+            "objective": self.objective(),
         }
 
 

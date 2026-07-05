@@ -118,7 +118,7 @@ class Building:
     __slots__ = (
         "id", "typ", "pos", "w", "h", "status", "has_storage", "ore", "metal",
         "cap", "full_emitted", "spot_cell", "prod_queue", "prod_active",
-        "prod_progress", "cons",
+        "prod_progress", "cons", "level",
     )
 
     def __init__(self, id, typ, pos, status, has_storage=False, cap=0):
@@ -141,6 +141,9 @@ class Building:
         self.prod_active = False
         self.prod_progress = 0
         self.cons: Optional[Construction] = None
+        # Base leveling (the game objective). Starts at 1; the current quest is
+        # derived via Config.quest_for. Only meaningful for the Base.
+        self.level = 1
 
 
 def ring_offset(i: int) -> Tuple[int, int]:

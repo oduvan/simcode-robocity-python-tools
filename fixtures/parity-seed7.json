@@ -22,6 +22,10 @@
     "storage_cap": 500,
     "base_storage_cap": 200,
     "idle_resend_ticks": 3,
+    "quest_base_ore": 40,
+    "quest_base_metal": 20,
+    "quest_growth_num": 3,
+    "quest_growth_den": 2,
     "mining_recipe": {
       "ore": 6,
       "metal": 3,
@@ -487,7 +491,10 @@
       "y": 0,
       "w": 1,
       "h": 1,
-      "cap": 200
+      "cap": 200,
+      "level": 1,
+      "quest_ore": 40,
+      "quest_metal": 20
     }
   ]
 }

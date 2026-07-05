@@ -385,6 +385,17 @@ class BuildingHandle:
         return _Attr(self._d.get("production"))
 
     @property
+    def level(self) -> int:
+        """The Base's current objective level (1+). 0 for non-Base buildings."""
+        return self._d.get("level", 0)
+
+    @property
+    def quest(self) -> _Attr:
+        """The Base's current quest: {required:{ore,metal}, progress:{ore,metal}}.
+        Empty for non-Base buildings."""
+        return _Attr(self._d.get("quest"))
+
+    @property
     def construction(self) -> _Attr:
         return _Attr(self._d.get("construction"))
 

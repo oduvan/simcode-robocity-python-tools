@@ -82,7 +82,8 @@ Everything the reference module does, ported faithfully and deterministically:
   sites (`world.build`), and **Base robot production**,
 - the full event set (`spawn`, `idle`, `arrived`, `blocked`, `construction_*`,
   `resource_delivered`, `spot_depleted`, `storage_full`, `inventory_full`,
-  `robot_produced`, `robot_destroyed`, `charge_complete`, `message`), delivered to
+  `robot_produced`, `robot_destroyed`, `charge_complete`, `message`,
+  `base_level_up`, `quest_updated`), delivered to
   your handlers exactly as on the server (intents lag one tick, same as prod).
 
 ## Determinism
