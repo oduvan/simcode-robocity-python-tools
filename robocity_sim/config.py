@@ -32,9 +32,9 @@ class Recipe:
 @dataclass
 class Config:
     # World generation (endless: generated lazily as discovered).
-    spot_density: float = 0.05
-    spot_rich_min: int = 50
-    spot_rich_max: int = 200
+    spot_density: float = 0.025
+    spot_rich_min: int = 150
+    spot_rich_max: int = 600
 
     # Fog of war.
     initial_reveal: int = 4
