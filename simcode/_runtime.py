@@ -57,9 +57,9 @@ class Runtime:
         # by starting at id "0"; flip to ">" (new entries only) once drained.
         self._read_id = "0"
         self._running = False
-        # In-process persistence (engine does not yet round-trip these via
-        # state.* — TODO persistence phase). Live for the process; reset on
-        # hot-reload when the script module is re-imported.
+        # City-wide ``store`` is durable: GAME persists it and the SDK restores it
+        # on connect (see restore_store), so it survives a hot-reload / container
+        # restart. Per-robot ``memory`` is still in-process (reset on hot-reload).
         self.store_state: dict = {}
         self.memory_state: dict = {}
         # Resilient subscription delivery. A CODE container can start before its
@@ -80,6 +80,28 @@ class Runtime:
     def install(self) -> "Runtime":
         """Attach to the global registry and register existing subscriptions."""
         registry.attach_runtime(self)
+        return self
+
+    def restore_store(self) -> "Runtime":
+        """Load the durable city-wide ``store`` from GAME into ``store_state`` so a
+        reloaded/restarted controller sees its prior values instead of an empty
+        dict. The store is a plain JSON object at ``city.<id>.store`` (key -> value)
+        that GAME write-throughs on each store merge. Missing/empty/unreadable is a
+        no-op (fresh empty store). The write path is unchanged — writes still ride
+        out on the intent's ``store`` field."""
+        try:
+            raw = self.redis.get(wire.store_key(self.city))
+        except Exception:
+            return self
+        if not raw:
+            return self
+        try:
+            data = decode(raw)
+        except Exception:
+            return self
+        if isinstance(data, dict):
+            self.store_state.clear()
+            self.store_state.update(data)
         return self
 
     def open(self) -> "Runtime":
@@ -320,6 +342,7 @@ def run(redis_client=None, city: str | None = None, poll_timeout: float = 1.0) -
     # Create the event stream's consumer group (open) BEFORE registering
     # subscriptions (install), so GAME's replay-on-subscribe events land in the
     # stream after the group exists and are therefore delivered, not lost.
-    rt = Runtime(redis_client, city).open().install()
+    # restore_store repopulates the durable city-wide store before the first event.
+    rt = Runtime(redis_client, city).open().restore_store().install()
     rt.run_forever(poll_timeout=poll_timeout)
     return rt

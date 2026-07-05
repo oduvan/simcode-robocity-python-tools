@@ -21,9 +21,11 @@ State store layout (Redis) — each key is a plain JSON **string** (not a hash):
 The runtime GETs (MGETs) and json-parses these; the reader indexes robots /
 buildings by id and tiles by "x,y". ``world.tick`` comes from ``state.meta.tick``.
 
-TODO(persistence): the engine does not yet persist city-wide ``store`` or
-per-robot ``memory`` back into ``state.*``. They are kept as in-process SDK
-state (live for the process; reset on hot-reload) — see ``_DictWriteProxy``.
+Persistence: the city-wide ``store`` is DURABLE — GAME (engine core) persists it
+and the SDK restores it on (re)connect (see ``Runtime.restore_store``), so it
+survives a hot-reload / container restart. Per-robot ``memory`` is still
+in-process only (live for the process; reset on hot-reload) — see
+``_DictWriteProxy``.
 """
 
 from __future__ import annotations
@@ -128,11 +130,11 @@ class Cell:
 class _DictWriteProxy:
     """Dict-like view over a **live** in-process dict (write-through).
 
-    ``store`` and ``r.memory`` are kept as in-process SDK state for now — the
-    engine does not yet persist them back into ``state.*`` (deferred phase). So
-    writes mutate the backing dict in place (persists across events for the life
-    of the process; resets on hot-reload) and are also recorded via ``on_set``
-    so they ride out on the intent for when persistence eventually lands.
+    Writes mutate the backing dict in place AND are recorded via ``on_set`` so
+    they ride out on the event's intent. For the city-wide ``store`` those writes
+    are persisted by GAME and restored on reconnect (durable across hot-reload /
+    restart). For per-robot ``r.memory`` the backing dict is in-process only
+    (persists across events for the life of the process; resets on hot-reload).
     """
 
     def __init__(self, backing: dict, on_set):
@@ -541,8 +543,9 @@ class StateReader:
 
     Built from the parsed JSON strings the engine writes: ``meta``/``world`` are
     objects; ``robots``/``buildings``/``tiles`` are arrays, indexed here by id
-    and "x,y". ``store_state`` / ``memory_state`` are the runtime's live
-    in-process dicts (persistence deferred — see module docstring).
+    and "x,y". ``store_state`` is the runtime's live store dict (durable —
+    restored on connect); ``memory_state`` is in-process only (see module
+    docstring).
     """
 
     def __init__(
