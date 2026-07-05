@@ -4,8 +4,10 @@ Responsibilities:
 - own the city-scoped Redis connection (addr from ``REDIS_ADDR``, city from
   ``SIMCODE_CITY``),
 - register the city's subscriptions with GAME (``city.<id>.subscribe``),
-- consume events on ``city.<id>.event``, build a fresh read model from
-  ``city.<id>.state.*``, dispatch to matching handlers in registration order,
+- consume events off the DURABLE stream ``city.<id>.event`` via a consumer group
+  (``code`` / ``code-<city>``) so events survive a container restart (no loss,
+  order preserved), build a fresh read model from ``city.<id>.state.*``, dispatch
+  to matching handlers in registration order,
 - flush the accumulated commands/store/logs as intents on the durable stream
   ``city.<id>.intent``.
 
@@ -28,6 +30,12 @@ from .contract import Accumulator, Event, build_subscribe, decode, encode
 # State sub-keys — each a plain JSON string the engine writes (see _state.py).
 _STATE_KEYS = ("meta", "world", "robots", "buildings", "tiles", "discovered")
 
+# Durable event stream: consumer group + this container's consumer name. The
+# group persists across restarts, so delivered-but-unacked entries from a prior
+# crash are reclaimed (read id "0") before new entries (read id ">").
+_EVENT_GROUP = "code"
+_EVENT_FIELD = "data"
+
 
 def _redis_from_addr(addr: str):
     import redis  # imported lazily so tests can run with a fake client
@@ -43,7 +51,11 @@ class Runtime:
         self.redis = redis_client
         self.city = city
         self.ch = wire.channels(city)
-        self.pubsub = None
+        self._consumer = f"{_EVENT_GROUP}-{city}"
+        self._group_ready = False
+        # Read the consumer's own PENDING (delivered-but-unacked) backlog first
+        # by starting at id "0"; flip to ">" (new entries only) once drained.
+        self._read_id = "0"
         self._running = False
         # In-process persistence (engine does not yet round-trip these via
         # state.* — TODO persistence phase). Live for the process; reset on
@@ -71,18 +83,28 @@ class Runtime:
         return self
 
     def open(self) -> "Runtime":
-        """Subscribe to the inbound event channel."""
-        self.pubsub = self.redis.pubsub()
-        self.pubsub.subscribe(self.ch["event"])
+        """Ensure the durable event stream's consumer group exists.
+
+        Uses ``MKSTREAM`` so the stream is created if GAME hasn't produced yet,
+        and starts the group at ``$`` (only entries appended after creation). The
+        group persists across restarts — that persistence is what makes events
+        resumable — so a re-created group with the same name is a BUSYGROUP we
+        deliberately ignore. Must run BEFORE the initial subscriptions are sent,
+        so GAME's replay-on-subscribe events land after the group exists.
+        """
+        if not self._group_ready:
+            try:
+                self.redis.xgroup_create(
+                    self.ch["event"], _EVENT_GROUP, id="$", mkstream=True
+                )
+            except Exception as exc:  # BUSYGROUP: group already exists — fine.
+                if "BUSYGROUP" not in str(exc):
+                    raise
+            self._group_ready = True
         return self
 
     def close(self) -> None:
         self._running = False
-        if self.pubsub is not None:
-            try:
-                self.pubsub.unsubscribe(self.ch["event"])
-            except Exception:
-                pass
         registry.detach_runtime()
 
     # ------------------------------------------------------------------ #
@@ -207,42 +229,77 @@ class Runtime:
     # ------------------------------------------------------------------ #
     # loop
     # ------------------------------------------------------------------ #
+    def _consume_batch(self, count: int | None, block: int | None) -> tuple[int, int]:
+        """Read one XREADGROUP batch, dispatch + XACK each entry.
+
+        Returns ``(dispatched, consumed)`` where ``consumed`` counts every entry
+        seen (including undecodable ones, which are still ACKed so a bad entry is
+        not redelivered forever — the intent consumer does the same) and
+        ``dispatched`` counts events actually handed to :meth:`dispatch`. Reads
+        this consumer's PENDING backlog (id ``"0"``) first; once that drains it
+        flips to new entries (id ``">"``)."""
+        if not self._group_ready:
+            self.open()
+        try:
+            res = self.redis.xreadgroup(
+                _EVENT_GROUP,
+                self._consumer,
+                {self.ch["event"]: self._read_id},
+                count=count,
+                block=block,
+            )
+        except Exception:
+            return 0, 0
+        dispatched = 0
+        consumed = 0
+        for _stream, entries in (res or []):
+            for entry_id, fields in entries:
+                consumed += 1
+                raw = fields.get(_EVENT_FIELD) if fields else None
+                if raw is not None:
+                    try:
+                        self.dispatch(decode(raw))
+                        dispatched += 1
+                    except Exception:
+                        pass  # bad entry: ACK below, don't redeliver
+                self.redis.xack(self.ch["event"], _EVENT_GROUP, entry_id)
+        # Pending backlog exhausted -> switch to new entries only.
+        if self._read_id == "0" and consumed == 0:
+            self._read_id = ">"
+        return dispatched, consumed
+
     def pump(self, max_messages: int | None = None) -> int:
         """Drain currently-available events. Returns how many were dispatched."""
-        if self.pubsub is None:
+        if not self._group_ready:
             self.open()
-        n = 0
-        while max_messages is None or n < max_messages:
-            msg = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=0.0)
-            if not msg:
-                break
-            if msg.get("type") != "message":
-                continue
-            try:
-                envelope = decode(msg["data"])
-            except Exception:
-                continue
-            self.dispatch(envelope)
-            n += 1
-        return n
+        total = 0
+        while max_messages is None or total < max_messages:
+            count = None if max_messages is None else max(1, max_messages - total)
+            was_pending = self._read_id == "0"
+            dispatched, consumed = self._consume_batch(count=count, block=None)
+            total += dispatched
+            if consumed == 0:
+                if was_pending and self._read_id == ">":
+                    continue  # just drained the pending backlog; read new entries
+                break  # nothing left to drain
+        return total
 
     def run_forever(self, poll_timeout: float = 1.0) -> None:
-        if self.pubsub is None:
+        if not self._group_ready:
             self.open()
         self._running = True
+        block_ms = max(1, int(poll_timeout * 1000))
         while self._running:
             # Keep re-sending subscriptions until GAME answers (see __init__).
-            # get_message returns after `poll_timeout` even with no traffic, so
-            # this runs periodically without a separate thread.
             self.maybe_resubscribe()
-            msg = self.pubsub.get_message(ignore_subscribe_messages=True, timeout=poll_timeout)
-            if not msg or msg.get("type") != "message":
-                continue
-            try:
-                envelope = decode(msg["data"])
-            except Exception:
-                continue
-            self.dispatch(envelope)
+            if self._read_id == "0":
+                # Drain the delivered-but-unacked backlog non-blocking, then loop
+                # (which flips _read_id to ">" once the backlog is empty).
+                self._consume_batch(count=256, block=None)
+            else:
+                # Block up to poll_timeout for new entries, so maybe_resubscribe
+                # still runs periodically without a separate thread.
+                self._consume_batch(count=256, block=block_ms)
 
 
 def run(redis_client=None, city: str | None = None, poll_timeout: float = 1.0) -> Runtime:
@@ -260,6 +317,9 @@ def run(redis_client=None, city: str | None = None, poll_timeout: float = 1.0) -
         addr = os.environ.get("REDIS_ADDR", "localhost:6379")
         redis_client = _redis_from_addr(addr)
 
-    rt = Runtime(redis_client, city).install().open()
+    # Create the event stream's consumer group (open) BEFORE registering
+    # subscriptions (install), so GAME's replay-on-subscribe events land in the
+    # stream after the group exists and are therefore delivered, not lost.
+    rt = Runtime(redis_client, city).open().install()
     rt.run_forever(poll_timeout=poll_timeout)
     return rt
