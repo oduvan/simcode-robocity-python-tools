@@ -116,15 +116,20 @@ class Construction:
 
 class Building:
     __slots__ = (
-        "id", "typ", "pos", "status", "has_storage", "ore", "metal", "cap",
-        "full_emitted", "spot_cell", "prod_queue", "prod_active",
+        "id", "typ", "pos", "w", "h", "status", "has_storage", "ore", "metal",
+        "cap", "full_emitted", "spot_cell", "prod_queue", "prod_active",
         "prod_progress", "cons",
     )
 
     def __init__(self, id, typ, pos, status, has_storage=False, cap=0):
         self.id = id
         self.typ = typ
+        # anchor = MIN corner; footprint size in cells (>=1), occupying
+        # [x, x+w) x [y, y+h). Derived from Config.footprint in add_building
+        # when left as 0 (see World.add_building).
         self.pos: Tuple[int, int] = pos
+        self.w = 0
+        self.h = 0
         self.status = status
         self.has_storage = has_storage
         self.ore = 0
@@ -242,17 +247,27 @@ class World:
         self.robot_ord.remove(id)
 
     def add_building(self, b: Building) -> None:
+        # Derive the footprint from config when the caller left it unset; every
+        # building covers at least its anchor cell. Occupy every covered cell.
+        if b.w < 1 or b.h < 1:
+            b.w, b.h = self.cfg.footprint(b.typ)
         self.buildings[b.id] = b
         self.build_ord.append(b.id)
-        self.cell_at(b.pos[0], b.pos[1]).building = b.id
+        for y in range(b.pos[1], b.pos[1] + b.h):
+            for x in range(b.pos[0], b.pos[0] + b.w):
+                self.cell_at(x, y).building = b.id
 
     def remove_building(self, id: str) -> None:
         b = self.buildings.get(id)
         if b is None:
             return
-        cl = self.cell_at(b.pos[0], b.pos[1])
-        if cl.building == id:
-            cl.building = ""
+        w = b.w if b.w >= 1 else 1
+        h = b.h if b.h >= 1 else 1
+        for y in range(b.pos[1], b.pos[1] + h):
+            for x in range(b.pos[0], b.pos[0] + w):
+                cl = self.cell_at(x, y)
+                if cl.building == id:
+                    cl.building = ""
         del self.buildings[id]
         self.build_ord.remove(id)
 
@@ -268,6 +283,14 @@ class World:
         if c is not None and c.building != "":
             return self.buildings.get(c.building)
         return None
+
+    def footprint_free(self, x: int, y: int, w: int, h: int) -> bool:
+        """True if every cell of the w x h rect anchored at (x,y) is free."""
+        for cy in range(y, y + h):
+            for cx in range(x, x + w):
+                if self.building_at(cx, cy) is not None:
+                    return False
+        return True
 
     # --- fog / bounds ------------------------------------------------------ #
     def reveal(self, cx: int, cy: int, r: int) -> None:

@@ -67,7 +67,8 @@ def test_initial_buildings_match_server():
     wd.generate("parity", fx["seed"])
     builds = sorted(
         (
-            {"id": b.id, "type": b.typ, "x": b.pos[0], "y": b.pos[1], "cap": b.cap}
+            {"id": b.id, "type": b.typ, "x": b.pos[0], "y": b.pos[1],
+             "w": b.w, "h": b.h, "cap": b.cap}
             for b in (wd.buildings[i] for i in wd.build_ord)
         ),
         key=lambda d: d["id"],

@@ -378,12 +378,14 @@ class Module:
         x = _arg_int(args, 1, 0)
         y = _arg_int(args, 2, 0)
 
+        # (x,y) is the anchor = min corner; the building occupies the whole w x h box.
+        w, h = self.cfg.footprint(typ)
         reason = ""
         if typ == BUILDING_BASE:
             reason = "base_not_buildable"
         elif typ not in self.cfg.recipes:
             reason = "unknown_type"
-        elif wd.building_at(x, y) is not None:
+        elif not wd.footprint_free(x, y, w, h):
             reason = "cell_occupied"
         if reason == "" and typ == BUILDING_MINING:
             cl = wd.cell_at(x, y)
@@ -652,6 +654,7 @@ class Module:
 
     def _building_form(self, b: Building) -> dict:
         bf: dict = {"id": b.id, "type": b.typ, "pos": [b.pos[0], b.pos[1]],
+                    "w": b.w if b.w >= 1 else 1, "h": b.h if b.h >= 1 else 1,
                     "status": b.status}
         if b.has_storage:
             bf["storage"] = {"ore": b.ore, "metal": b.metal, "capacity": b.cap}

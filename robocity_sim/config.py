@@ -29,6 +29,19 @@ class Recipe:
     build_ticks: int
 
 
+@dataclass(frozen=True)
+class Footprint:
+    """A building type's rectangular size in cells (w wide, h tall).
+
+    A building's anchor (pos) is the MIN corner; it occupies every cell in
+    [x, x+w) x [y, y+h). A robot standing on ANY covered cell can interact
+    with it. Any type not listed defaults to 1x1 (see Config.footprint).
+    """
+
+    w: int
+    h: int
+
+
 @dataclass
 class Config:
     # World generation (endless: generated lazily as discovered).
@@ -74,8 +87,23 @@ class Config:
         }
     )
 
+    # Footprints per building type. Any type not listed defaults to 1x1 (see
+    # footprint). Storage is a 2x2 hub; base/mining/flying_station stay 1x1.
+    footprints: Dict[str, Footprint] = field(
+        default_factory=lambda: {
+            BUILDING_STORAGE: Footprint(w=2, h=2),
+        }
+    )
+
     # Robot production at the Base (consumes the Base's reserved store).
     robot_recipe: Recipe = Recipe(ore=12, metal=6, build_ticks=8)
+
+    def footprint(self, typ: str) -> tuple[int, int]:
+        """The (w, h) cell footprint for a building type, default 1x1."""
+        f = self.footprints.get(typ)
+        if f is not None and f.w > 0 and f.h > 0:
+            return f.w, f.h
+        return 1, 1
 
 
 def default_config() -> Config:
