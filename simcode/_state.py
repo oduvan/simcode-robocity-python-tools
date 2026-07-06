@@ -457,6 +457,11 @@ class BuildingRegistry:
     def of_type(self, t: str):
         return [h for h in self.all() if h.type == t]
 
+    def stations(self):
+        """All Flying Station handles (alias for ``of_type("flying_station")``).
+        Each carries ``build_robot`` / ``cancel`` plus ``production`` / ``storage``."""
+        return self.of_type("flying_station")
+
     @property
     def base(self) -> Optional[BuildingHandle]:
         for bid, d in self._reader.buildings_raw.items():

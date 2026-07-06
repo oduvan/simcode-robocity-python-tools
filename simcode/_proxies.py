@@ -43,6 +43,10 @@ class _BuildingsProxy:
     def of_type(self, t):
         return current().state.buildings.of_type(t)
 
+    def stations(self):
+        """All Flying Station handles (each carries ``build_robot`` / ``cancel``)."""
+        return current().state.buildings.stations()
+
     @property
     def base(self):
         return current().state.buildings.base
