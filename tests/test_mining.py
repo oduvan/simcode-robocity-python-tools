@@ -40,6 +40,13 @@ def test_controller_builds_mine_and_it_fills():
     load_user_module(mine_path())
     sim = Simulation(city="local", cfg=cfg, seed=7)
 
+    # Robots now spawn EMPTY (the boot stock lives on the Base, which is
+    # production-only and can't be withdrawn), so hand the starting fleet a build
+    # kit directly — mirrors the old spawn state this end-to-end path relies on
+    # (one robot places the mine site, another drops its kit to complete it).
+    for r in sim.mod.wd.robots.values():
+        r.ore, r.metal = 6, 3
+
     # Inject a rich ore spot inside the starting reveal so r1 can reach + mine it.
     sim.mod.wd.cell_at(2, 0).spot = Spot("ore", 100)
     sim.mod.wd.discovered[(2, 0)] = True

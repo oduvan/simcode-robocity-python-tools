@@ -195,6 +195,8 @@ class World:
             id="base-1", typ=BUILDING_BASE, pos=(0, 0), status="active",
             has_storage=True, cap=self.cfg.base_storage_cap,
         )
+        base.ore = self.cfg.base_start_ore    # the boot stock
+        base.metal = self.cfg.base_start_metal
         self.cell_at(0, 0).spot = None
         self.add_building(base)
 

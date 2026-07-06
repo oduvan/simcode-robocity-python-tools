@@ -62,10 +62,13 @@ class Config:
     # Robots.
     carry_capacity: int = 10
     num_start_robots: int = 2
-    start_ore: int = 6
-    start_metal: int = 3
+    start_ore: int = 0  # robots spawn EMPTY — the boot stock lives on the Base now
+    start_metal: int = 0
     produced_ore: int = 6
     produced_metal: int = 3
+    # The Base's store starts with a boot stock so the first robot can be built.
+    base_start_ore: int = 30
+    base_start_metal: int = 15
 
     # Mining (autonomous).
     mining_speed: int = 1

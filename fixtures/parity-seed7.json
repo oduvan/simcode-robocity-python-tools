@@ -13,8 +13,8 @@
     "charge_rate": 10,
     "carry_capacity": 10,
     "num_start_robots": 2,
-    "start_ore": 6,
-    "start_metal": 3,
+    "start_ore": 0,
+    "start_metal": 0,
     "produced_ore": 6,
     "produced_metal": 3,
     "mining_speed": 1,
@@ -469,8 +469,8 @@
       "x": 1,
       "y": 0,
       "energy": 100,
-      "ore": 6,
-      "metal": 3,
+      "ore": 0,
+      "metal": 0,
       "cap": 10
     },
     {
@@ -478,8 +478,8 @@
       "x": -1,
       "y": 0,
       "energy": 100,
-      "ore": 6,
-      "metal": 3,
+      "ore": 0,
+      "metal": 0,
       "cap": 10
     }
   ],
