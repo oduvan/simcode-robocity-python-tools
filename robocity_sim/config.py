@@ -62,20 +62,29 @@ class Config:
     # Robots.
     carry_capacity: int = 10
     num_start_robots: int = 2
-    start_ore: int = 0  # robots spawn EMPTY — the boot stock lives on the Base now
+    start_ore: int = 0  # robots spawn EMPTY — the boot stock lives in a Storage now
     start_metal: int = 0
+    # produced_ore/produced_metal are RETAINED but currently UNUSED: a
+    # station-produced robot now spawns EMPTY. Kept so the kit can be
+    # reintroduced without a config/parity-schema change.
     produced_ore: int = 6
     produced_metal: int = 3
-    # The Base's store starts with a boot stock so the first robot can be built.
-    base_start_ore: int = 30
-    base_start_metal: int = 15
+
+    # Starting capital: the boot stock lives in a pre-placed Storage next to the
+    # Base at world start (the Base itself no longer seeds a store).
+    start_capital_ore: int = 30
+    start_capital_metal: int = 15
 
     # Mining (autonomous).
     mining_speed: int = 1
     mining_storage_cap: int = 12
 
-    # Storage / Base caps.
+    # Storage caps.
     storage_cap: int = 500
+    # A Flying Station's robot-production store cap.
+    station_storage_cap: int = 200
+    # base_storage_cap is RETAINED but currently UNUSED: the Base's store is the
+    # quest accumulator, capped PER-RESOURCE at quest_for(level), not by this value.
     base_storage_cap: int = 200
 
     # Reliability.
@@ -83,8 +92,9 @@ class Config:
 
     # Base quests (the game objective). The Base starts at level 1; each level
     # poses a quest = a required amount of raw ore+metal that must accumulate in
-    # the Base's store. When held, the amount is CONSUMED and the Base levels up
-    # to the next, harder quest. questFor(level) escalates the requirement
+    # the Base's quest store (drops are capped per-resource at the requirement).
+    # When both are met, the store RESETS to 0 and the Base levels up to the
+    # next, harder quest. questFor(level) escalates the requirement
     # geometrically from the base amounts by quest_growth_num/quest_growth_den
     # per level. (Mirror of config.go.)
     quest_base_ore: int = 40
@@ -109,7 +119,7 @@ class Config:
         }
     )
 
-    # Robot production at the Base (consumes the Base's reserved store).
+    # Robot production at a Flying Station (consumes that station's own store).
     robot_recipe: Recipe = Recipe(ore=12, metal=6, build_ticks=8)
 
     def footprint(self, typ: str) -> tuple[int, int]:

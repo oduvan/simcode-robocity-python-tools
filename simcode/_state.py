@@ -13,7 +13,7 @@ State store layout (Redis) — each key is a plain JSON **string** (not a hash):
     city.<id>.state.robots     JSON ARRAY of {"id","type","pos":[x,y],"facing",
                                "inventory":{ore,metal,capacity},"state","command"}
     city.<id>.state.buildings  JSON ARRAY of {"id","type","pos","status","storage",
-                               + mining:"spot", base:"production", constructing:"construction"}
+                               + mining:"spot", flying_station:"production", base:"level"/"quest", constructing:"construction"}
     city.<id>.state.tiles      JSON ARRAY of {"x","y","terrain","spot"|null}
     city.<id>.state.stats      JSON object (not needed to drive)
     city.<id>.state.discovered base64 string (exposed raw; not needed to drive)
@@ -420,12 +420,19 @@ class BuildingHandle:
         q = self._d.get("quest")
         return _Attr(q) if q else None
 
-    # ----- Base direct commands -----
+    # ----- Flying Station direct commands -----
     def build_robot(self, n: int = 1) -> "BuildingHandle":
+        """Flying Station only: queue ``n`` robots built at THIS station. The
+        command targets this building's id; the engine rejects a non-station
+        target with a ``blocked`` reason ``not_a_station``. Each queued unit
+        consumes the robot recipe from this station's own production store and
+        spawns at the station (empty inventory, full energy)."""
         self._acc.add_command(self.id, make_command("build_robot", n))
         return self
 
     def cancel(self) -> "BuildingHandle":
+        """Flying Station only: cancel THIS station's production queue (an
+        in-progress unit still finishes)."""
         self._acc.add_command(self.id, make_command("base_cancel"))
         return self
 

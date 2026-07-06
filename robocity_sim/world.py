@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from typing import Dict, List, Optional, Tuple
 
-from .config import Config, BUILDING_BASE
+from .config import Config, BUILDING_BASE, BUILDING_STORAGE
 
 MASK64 = 0xFFFFFFFFFFFFFFFF
 
@@ -191,14 +191,29 @@ class World:
         self.city = city
         self.seed = seed
 
+        # The Base occupies the origin. It is the quest hub ONLY: no general/
+        # withdrawable store (has_storage stays False) — its ore/metal are the
+        # quest accumulator, capped per-resource at quest_for(level). It still
+        # doubles as a charging pad (see _station_at) and no longer builds robots.
         base = Building(
             id="base-1", typ=BUILDING_BASE, pos=(0, 0), status="active",
-            has_storage=True, cap=self.cfg.base_storage_cap,
         )
-        base.ore = self.cfg.base_start_ore    # the boot stock
-        base.metal = self.cfg.base_start_metal
+        base.level = 1
         self.cell_at(0, 0).spot = None
         self.add_building(base)
+
+        # The boot capital lives in a Storage pre-placed next to the Base (anchor
+        # (2,0), footprint 2×2 → covers (2,0),(3,0),(2,1),(3,1) — clear of the Base
+        # cell and the starting robots' ring, within the initial reveal radius).
+        # Robots pick_up from it to bootstrap the first mines.
+        self.next_build += 1
+        storage = Building(
+            id=BUILDING_STORAGE + "-" + str(self.next_build), typ=BUILDING_STORAGE,
+            pos=(2, 0), status="active", has_storage=True, cap=self.cfg.storage_cap,
+        )
+        storage.ore = self.cfg.start_capital_ore
+        storage.metal = self.cfg.start_capital_metal
+        self.add_building(storage)
 
         num = self.cfg.num_start_robots
         if num < 1:

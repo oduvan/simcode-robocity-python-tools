@@ -203,15 +203,21 @@ class Module:
             cmd = c.get("cmd")
             args = c.get("args", [])
             if cmd == CMD_BUILD_ROBOT:
-                b = wd.base()
-                if b is not None:
-                    n = _arg_int(args, 0, 1)
-                    if n < 1:
-                        n = 1
-                    b.prod_queue += n
+                # Station-scoped: the intent targets a Flying Station by building
+                # id (intent.robot). Queue N robots against THAT station's store.
+                b = wd.buildings.get(intent.robot)
+                if b is None or b.typ != BUILDING_FLYING_STATION or b.status != STATUS_ACTIVE:
+                    self.emit(EVENT_BLOCKED, "", tick, {"reason": "not_a_station"})
+                    self.feed_add(FeedEvent(kind=EVENT_BLOCKED))
+                    continue
+                n = _arg_int(args, 0, 1)
+                if n < 1:
+                    n = 1
+                b.prod_queue += n
             elif cmd == CMD_BASE_CANCEL:
-                b = wd.base()
-                if b is not None:
+                # Cancel a Flying Station's production queue (in-progress finishes).
+                b = wd.buildings.get(intent.robot)
+                if b is not None and b.typ == BUILDING_FLYING_STATION:
                     b.prod_queue = 0
             elif cmd == CMD_BUILD:
                 self._do_build(args, tick)
@@ -452,9 +458,28 @@ class Module:
             r.state = STATE_IDLE
             return
 
+        if b.typ == BUILDING_BASE:
+            # The Base is the quest accumulator: accept each resource only up to
+            # the current quest requirement; the un-accepted remainder STAYS in
+            # the robot. The Base holds no withdrawable store (pick_up is blocked).
+            lvl = b.level if b.level >= 1 else 1
+            req_ore, req_metal = self.cfg.quest_for(lvl)
+            take_ore = _max0(min(ore, req_ore - b.ore))
+            take_metal = _max0(min(metal, req_metal - b.metal))
+            b.ore += take_ore
+            b.metal += take_metal
+            r.ore -= take_ore
+            r.metal -= take_metal
+            self.emit(EVENT_RESOURCE_DELIVERED, r.id, tick,
+                      {"building_id": b.id, "ore": take_ore, "metal": take_metal})
+            self.feed_add(FeedEvent(kind=EVENT_RESOURCE_DELIVERED, robot=r.id))
+            r.state = STATE_IDLE
+            return
+
         if not b.has_storage:
             self._blocked(r, tick, "no_storage")
             return
+        # Storage building OR a Flying Station's production store: capped at b.cap.
         room = b.cap - (b.ore + b.metal)
         take_ore = min(ore, room)
         room -= take_ore
@@ -478,7 +503,10 @@ class Module:
             self._blocked(r, tick, "nothing_here")
             return
         if b.typ == BUILDING_BASE:
-            self._blocked(r, tick, "base_reserved")
+            self._blocked(r, tick, "base_reserved")  # quest accumulator only
+            return
+        if b.typ == BUILDING_FLYING_STATION:
+            self._blocked(r, tick, "station_reserved")  # production store only
             return
         if not b.has_storage:
             self._blocked(r, tick, "no_storage")
@@ -526,10 +554,10 @@ class Module:
             self.emit(EVENT_SPAWN, rid, tick, None)
         wd.pending_spawn = []
 
-        self._advance_production(tick)
-        # Base quests / leveling (the objective): consume-and-level-up when the
-        # store satisfies the current quest. Runs after production so both compete
-        # for the same reserved store.
+        # Flying Station robot production (each station consumes its own store).
+        self._advance_station_production(tick)
+        # Base quests / leveling (the objective): reset-and-level-up when the
+        # Base's quest store satisfies the current quest.
         self._advance_base_quest(tick)
         self._advance_mining(tick)
 
@@ -552,45 +580,53 @@ class Module:
                 r.idle_emitted_tick = tick
                 self.emit(EVENT_IDLE, r.id, tick, None)
 
-    def _advance_production(self, tick: int) -> None:
+    def _advance_station_production(self, tick: int) -> None:
+        """Every Flying Station's robot factory. Each active station with a queue
+        starts a unit when its OWN production store can pay robot_recipe,
+        accumulates build time, and on finish spawns a robot AT the station
+        (empty inventory, full energy). Deterministic build_ord order. (Mirror of
+        buildings.go advanceStationProduction.)"""
         wd = self.wd
-        b = wd.base()
-        if b is None:
-            return
         rr = self.cfg.robot_recipe
-        if not b.prod_active and b.prod_queue > 0:
-            if b.ore >= rr.ore and b.metal >= rr.metal:
-                b.ore -= rr.ore
-                b.metal -= rr.metal
-                b.prod_active = True
-                b.prod_progress = 0
-        if b.prod_active:
-            b.prod_progress += 1
-            if b.prod_progress >= rr.build_ticks:
-                pos = wd.free_adjacent(b.pos[0], b.pos[1])
-                wd.next_robot += 1
-                rid = "r" + str(wd.next_robot)
-                nr = Robot(
-                    id=rid, typ="builder", pos=(float(pos[0]), float(pos[1])),
-                    face="S", cap=self.cfg.carry_capacity, energy=self.cfg.energy_cap,
-                    state=STATE_IDLE, ore=self.cfg.produced_ore, metal=self.cfg.produced_metal,
-                )
-                wd.add_robot(nr)
-                wd.reveal(pos[0], pos[1], self.cfg.initial_reveal)
-                b.prod_active = False
-                b.prod_progress = 0
-                if b.prod_queue > 0:
-                    b.prod_queue -= 1
-                self.emit(EVENT_ROBOT_PRODUCED, rid, tick, {"robot_id": rid})
-                self.feed_add(FeedEvent(kind=EVENT_ROBOT_PRODUCED, robot=rid))
-                self.emit(EVENT_SPAWN, rid, tick, None)
+        for bid in wd.build_ord:
+            b = wd.buildings.get(bid)
+            if b is None or b.typ != BUILDING_FLYING_STATION or b.status != STATUS_ACTIVE:
+                continue
+            if not b.prod_active and b.prod_queue > 0:
+                if b.ore >= rr.ore and b.metal >= rr.metal:
+                    b.ore -= rr.ore
+                    b.metal -= rr.metal
+                    b.prod_active = True
+                    b.prod_progress = 0
+            if b.prod_active:
+                b.prod_progress += 1
+                if b.prod_progress >= rr.build_ticks:
+                    wd.next_robot += 1
+                    rid = "r" + str(wd.next_robot)
+                    # Spawns AT the station, empty (it already paid to build it).
+                    nr = Robot(
+                        id=rid, typ="builder",
+                        pos=(float(b.pos[0]), float(b.pos[1])),
+                        face="S", cap=self.cfg.carry_capacity, energy=self.cfg.energy_cap,
+                        state=STATE_IDLE, ore=0, metal=0,
+                    )
+                    wd.add_robot(nr)
+                    wd.reveal(b.pos[0], b.pos[1], self.cfg.initial_reveal)
+                    b.prod_active = False
+                    b.prod_progress = 0
+                    if b.prod_queue > 0:
+                        b.prod_queue -= 1
+                    self.emit(EVENT_ROBOT_PRODUCED, rid, tick, {"robot_id": rid})
+                    self.feed_add(FeedEvent(kind=EVENT_ROBOT_PRODUCED, robot=rid))
+                    self.emit(EVENT_SPAWN, rid, tick, None)
 
     def _advance_base_quest(self, tick: int) -> None:
         """The Base's leveling (the game objective). Announce the current quest
-        once, then — while the Base store satisfies the current quest — CONSUME
-        the required ore+metal and level up, emitting base_level_up +
-        quest_updated. The same store also pays robot production, so quest goods
-        and robots compete for it. (Mirror of buildings.go advanceBaseQuest.)"""
+        once, then — while the Base quest store satisfies the current quest —
+        RESET the store to 0 and level up, emitting base_level_up + quest_updated.
+        Drops into the Base are capped per-resource at the requirement, so a met
+        quest holds exactly the requirement and the reset consumes it. (Mirror of
+        buildings.go advanceBaseQuest.)"""
         b = self.wd.base()
         if b is None:
             return
@@ -602,14 +638,14 @@ class Module:
             self.emit(EVENT_QUEST_UPDATED, b.id, tick,
                       {"level": b.level, "requirements": {"ore": req_ore, "metal": req_metal}})
             self.feed_add(FeedEvent(kind=EVENT_QUEST_UPDATED))
-        # Level up while the store can pay the current quest (loop so a big surplus
-        # can clear multiple levels in one tick; the requirement grows each level).
+        # Level up while the store can pay the current quest (drops are capped at
+        # the requirement, so the store never exceeds it): reset to 0, not subtract.
         while True:
             req_ore, req_metal = self.cfg.quest_for(b.level)
             if b.ore < req_ore or b.metal < req_metal:
                 break
-            b.ore -= req_ore
-            b.metal -= req_metal
+            b.ore = 0
+            b.metal = 0
             b.level += 1
             next_ore, next_metal = self.cfg.quest_for(b.level)
             self.emit(EVENT_BASE_LEVEL_UP, b.id, tick,
@@ -690,6 +726,11 @@ class Module:
         elif typ == BUILDING_STORAGE:
             nb.has_storage = True
             nb.cap = self.cfg.storage_cap
+        elif typ == BUILDING_FLYING_STATION:
+            # A production store: robots drop ore/metal here to fuel robot
+            # building, and land here to charge via the `charge` command.
+            nb.has_storage = True
+            nb.cap = self.cfg.station_storage_cap
         wd.remove_building(plat.id)
         wd.add_building(nb)
         self.emit(EVENT_CONSTRUCTION_COMPLETE, "", tick,
@@ -715,15 +756,19 @@ class Module:
             cl = self.wd.cell_at(b.pos[0], b.pos[1])
             if cl.spot is not None:
                 bf["spot"] = {"resource": cl.spot.resource, "remaining": cl.spot.remaining}
-        if b.typ == BUILDING_BASE:
+        if b.typ == BUILDING_FLYING_STATION:
+            # Robot production lives on the Flying Station (store form comes from
+            # has_storage above). Progress is 0..1 over the recipe's build time.
             denom = self.cfg.robot_recipe.build_ticks or 1
             bf["production"] = {
                 "active": b.prod_active,
                 "progress": float(b.prod_progress) / float(denom),
                 "queued": b.prod_queue,
             }
+        if b.typ == BUILDING_BASE:
             # Leveling: the Base's current level + quest (required vs progress).
-            # This is the game objective; only the Base carries it.
+            # This is the game objective; only the Base carries it. No production /
+            # no general storage form (has_storage is False).
             lvl = b.level if b.level >= 1 else 1
             req_ore, req_metal = self.cfg.quest_for(lvl)
             bf["level"] = lvl

@@ -53,7 +53,7 @@ buildings, run`, registers `@on.idle` etc., and the tool imports it (so
 - `robots destroyed` should be **0** — a non-zero count means a robot ran its battery
   dry mid-flight (recharge earlier / fly shorter hops).
 - `ore.mined` / `metal.mined` climbing and `buildings_by_type` growing (mining,
-  storage, flying_station, more base-produced robots) means the city is actually
+  storage, flying_station, more station-produced robots) means the city is actually
   developing, not just exploring. The shipped starter only explores, so a fresh run
   of it shows `mined: 0` and `buildings: base=1` — beat that.
 
@@ -120,7 +120,8 @@ robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOK
 - `robocity_sim/` — the ported engine + driver + CLI:
   - `world.py` — endless world, `hash_cell` (SplitMix64, masked to 64-bit), generation.
   - `module.py` — the rules: Submit/Advance, commands, autonomous mining/construction,
-    Base production, events, and the `state.*` snapshot the SDK reads.
+    Flying Station robot production, Base quest leveling, events, and the
+    `state.*` snapshot the SDK reads.
   - `fakeredis.py` — in-process fake Redis (state KV + captured pub/sub + streams).
   - `driver.py` — the tick loop (mirrors the Go engine `step`); wires SDK ↔ engine.
   - `cli.py` — `robocity-sim` entry point. `live.py` — `--from-live`.

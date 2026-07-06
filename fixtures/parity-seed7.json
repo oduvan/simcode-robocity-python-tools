@@ -17,9 +17,12 @@
     "start_metal": 0,
     "produced_ore": 6,
     "produced_metal": 3,
+    "start_capital_ore": 30,
+    "start_capital_metal": 15,
     "mining_speed": 1,
     "mining_storage_cap": 12,
     "storage_cap": 500,
+    "station_storage_cap": 200,
     "base_storage_cap": 200,
     "idle_resend_ticks": 3,
     "quest_base_ore": 40,
@@ -491,10 +494,19 @@
       "y": 0,
       "w": 1,
       "h": 1,
-      "cap": 200,
+      "cap": 0,
       "level": 1,
       "quest_ore": 40,
       "quest_metal": 20
+    },
+    {
+      "id": "storage-1",
+      "type": "storage",
+      "x": 2,
+      "y": 0,
+      "w": 2,
+      "h": 2,
+      "cap": 500
     }
   ]
 }

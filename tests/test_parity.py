@@ -91,8 +91,9 @@ def test_config_matches_server():
         "spot_density", "spot_rich_min", "spot_rich_max", "initial_reveal", "move_reveal",
         "fly_speed", "energy_cap", "energy_per_distance", "charge_rate",
         "carry_capacity", "num_start_robots", "start_ore", "start_metal",
-        "produced_ore", "produced_metal", "mining_speed", "mining_storage_cap",
-        "storage_cap", "base_storage_cap", "idle_resend_ticks",
+        "produced_ore", "produced_metal", "start_capital_ore", "start_capital_metal",
+        "mining_speed", "mining_storage_cap",
+        "storage_cap", "station_storage_cap", "base_storage_cap", "idle_resend_ticks",
         "quest_base_ore", "quest_base_metal", "quest_growth_num", "quest_growth_den",
     ]
     for name in scalars:

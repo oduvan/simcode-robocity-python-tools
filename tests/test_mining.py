@@ -40,17 +40,18 @@ def test_controller_builds_mine_and_it_fills():
     load_user_module(mine_path())
     sim = Simulation(city="local", cfg=cfg, seed=7)
 
-    # Robots now spawn EMPTY (the boot stock lives on the Base, which is
-    # production-only and can't be withdrawn), so hand the starting fleet a build
-    # kit directly — mirrors the old spawn state this end-to-end path relies on
-    # (one robot places the mine site, another drops its kit to complete it).
+    # Robots now spawn EMPTY (the boot stock lives in the pre-placed Storage, not
+    # in the robots), so hand the starting fleet a build kit directly — mirrors
+    # the spawn state this end-to-end path relies on (one robot places the mine
+    # site, another drops its kit to complete it).
     for r in sim.mod.wd.robots.values():
         r.ore, r.metal = 6, 3
 
-    # Inject a rich ore spot inside the starting reveal so r1 can reach + mine it.
-    sim.mod.wd.cell_at(2, 0).spot = Spot("ore", 100)
-    sim.mod.wd.discovered[(2, 0)] = True
-    sim.mod.wd.grow_bounds(2, 0)
+    # Inject a rich ore spot inside the starting reveal, on a FREE cell (the
+    # pre-placed Storage now covers (2,0)..(3,1)), so a robot can reach + mine it.
+    sim.mod.wd.cell_at(-2, 0).spot = Spot("ore", 100)
+    sim.mod.wd.discovered[(-2, 0)] = True
+    sim.mod.wd.grow_bounds(-2, 0)
 
     for t in range(1, 160):
         sim.step(t)
@@ -59,7 +60,7 @@ def test_controller_builds_mine_and_it_fills():
              if b.typ == BUILDING_MINING and b.status == STATUS_ACTIVE]
     assert mines, "controller never completed a mine"
     mine = mines[0]
-    assert mine.pos == (2, 0)
+    assert mine.pos == (-2, 0)
     # The autonomous mine extracted ore into its capped store (hauling may draw
     # it down, so just require it stayed within the cap and mined something).
     assert sim.mod.wd.ore_mined > 0, "no ore was ever mined"
