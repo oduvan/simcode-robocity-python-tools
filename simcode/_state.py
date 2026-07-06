@@ -84,7 +84,14 @@ class _Attr:
         d = object.__getattribute__(self, "_d")
         if name in d:
             return d[name]
-        raise AttributeError(name)
+        # Private/dunder lookups must still raise so Python's own attribute
+        # protocols (copy, pickle, repr/IPython helpers, …) behave normally.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        # A missing *public* field reads as None instead of raising, so a
+        # defensive `attr.field or default` over an omitempty wire field (e.g.
+        # production.queued when 0) never crashes an event handler.
+        return None
 
     def __bool__(self) -> bool:
         return bool(self._d)
@@ -368,6 +375,18 @@ class BuildingHandle:
         return self._d.get("status")
 
     @property
+    def footprint(self):
+        """The building's (w, h) cell footprint (min 1×1). ``pos`` is the min
+        corner; the building covers every cell in [x, x+w) × [y, y+h) and a
+        robot on ANY of them can interact with it."""
+        w = self._d.get("w") or 1
+        h = self._d.get("h") or 1
+        return (w, h)
+
+    # size is an alias for footprint.
+    size = footprint
+
+    @property
     def progress(self):
         return self._d.get("progress")
 
@@ -385,19 +404,21 @@ class BuildingHandle:
         return _Attr(self._d.get("production"))
 
     @property
-    def level(self) -> int:
-        """The Base's current objective level (1+). 0 for non-Base buildings."""
-        return self._d.get("level", 0)
-
-    @property
-    def quest(self) -> _Attr:
-        """The Base's current quest: {required:{ore,metal}, progress:{ore,metal}}.
-        Empty for non-Base buildings."""
-        return _Attr(self._d.get("quest"))
-
-    @property
     def construction(self) -> _Attr:
         return _Attr(self._d.get("construction"))
+
+    @property
+    def level(self):
+        """Base only: its current level (the game objective; starts at 1)."""
+        return self._d.get("level")
+
+    @property
+    def quest(self) -> Optional[_Attr]:
+        """Base only: the current quest — ``.required`` and ``.progress`` are each
+        ``{ore, metal}`` (progress = min(stored, required)). None on non-Base
+        buildings. Deliver the required raw resources to the Base to level up."""
+        q = self._d.get("quest")
+        return _Attr(q) if q else None
 
     # ----- Base direct commands -----
     def build_robot(self, n: int = 1) -> "BuildingHandle":
@@ -600,10 +621,16 @@ class StateReader:
     def building_at(self, position) -> Optional[BuildingHandle]:
         if position is None:
             return None
-        target = (round(position[0]), round(position[1]))
+        tx, ty = round(position[0]), round(position[1])
         for bid, d in self.buildings_raw.items():
             pos = d.get("pos")
-            if pos is not None and tuple(pos) == target:
+            if pos is None:
+                continue
+            # pos is the min corner; the building covers its whole w×h footprint,
+            # so (tx,ty) hits it if it lies anywhere inside that box.
+            w = d.get("w") or 1
+            h = d.get("h") or 1
+            if pos[0] <= tx < pos[0] + w and pos[1] <= ty < pos[1] + h:
                 return BuildingHandle(bid, d, self)
         return None
 
