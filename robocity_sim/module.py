@@ -665,6 +665,28 @@ class Module:
         ore, metal = self.cfg.quest_for(lvl)
         return f"⭐ Base level {lvl} — next: {ore} ore + {metal} metal"
 
+    def objective_progress(self) -> float:
+        """The current quest's completion as a 0..1 fraction:
+        (min(base_ore, req_ore) + min(base_metal, req_metal)) / (req_ore + req_metal),
+        using the Base's held ore/metal. 0 when there is no Base or the quest
+        requires nothing. Game-agnostic — the shell renders it as a progress bar.
+        (Mirror of module.go objectiveProgress.)"""
+        b = self.wd.base()
+        if b is None:
+            return 0.0
+        lvl = b.level if b.level >= 1 else 1
+        req_ore, req_metal = self.cfg.quest_for(lvl)
+        total = req_ore + req_metal
+        if total <= 0:
+            return 0.0
+        got = min(b.ore, req_ore) + min(b.metal, req_metal)
+        p = float(got) / float(total)
+        if p < 0:
+            return 0.0
+        if p > 1:
+            return 1.0
+        return p
+
     def _advance_mining(self, tick: int) -> None:
         wd = self.wd
         for bid in wd.build_ord:
@@ -839,6 +861,8 @@ class Module:
             "stats": self.stats(),
             # Game-agnostic goal summary the shell renders in the topbar.
             "objective": self.objective(),
+            # Game-agnostic 0..1 goal completion the shell renders as a bar.
+            "objective_progress": self.objective_progress(),
         }
 
 
