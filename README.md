@@ -1,5 +1,20 @@
 # simcode-robocity-python-tools
 
+> ## ⚠️ DEPRECATED — superseded by the real shared engine
+>
+> Local testing no longer uses this re-implementation. The `simcode` Python SDK now
+> runs your controller against the **real** game engine — the exact engine the server
+> runs, downloaded on demand — via:
+>
+> ```bash
+> pip install "git+https://github.com/oduvan/simcode-sdk-python"
+> python -m simcode.local main.py
+> ```
+>
+> Because that runs the actual engine (not a port), there is **no parity to maintain**,
+> and this repo is **no longer kept in sync** with the server engine — its results may
+> drift. The code is left here for reference; prefer `python -m simcode.local`.
+
 A **local, offline simulator** for the SimCode **Robot City Builder** game. It lets
 you test a city controller (`main.py`) on your machine — **no GitHub push, no
 network, no server** — and see what your robots would do.
