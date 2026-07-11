@@ -1,28 +1,13 @@
 # simcode-robocity-python-tools
 
-> ## ⚠️ DEPRECATED — superseded by the real shared engine
->
-> Local testing no longer uses this re-implementation. The `simcode` Python SDK now
-> runs your controller against the **real** game engine — the exact engine the server
-> runs, downloaded on demand — via:
->
-> ```bash
-> pip install "git+https://github.com/oduvan/simcode-sdk-python"
-> python -m simcode.local main.py
-> ```
->
-> Because that runs the actual engine (not a port), there is **no parity to maintain**,
-> and this repo is **no longer kept in sync** with the server engine — its results may
-> drift. The code is left here for reference; prefer `python -m simcode.local`.
+The **local test tool** for the SimCode **Robot City Builder** game. It lets you run
+a city controller (`main.py`) on your machine and see what your robots would do —
+**before** you push it to your city repo.
 
-A **local, offline simulator** for the SimCode **Robot City Builder** game. It lets
-you test a city controller (`main.py`) on your machine — **no GitHub push, no
-network, no server** — and see what your robots would do.
-
-It re-implements the server's game engine in Python and drives the **unchanged**
-`simcode` client SDK, so your `main.py` runs byte-for-byte the same as it does on
-the server. The world generation is a faithful port of the Go engine and is
-**verified identical** (same seed 7 → same map, same spot positions/richness).
+`robocity-sim run` drives your controller against the **real game engine**: the exact
+same binary the server runs, downloaded on demand and cached. There is **no
+re-implementation** to drift and **no parity to maintain** — a local run is the
+server's actual game logic.
 
 > This is a **test tool**, not the platform and not your city repo. Your controller
 > still ships by pushing to your city repo; this just lets you check it first.
@@ -39,19 +24,19 @@ or from a checkout:
 pip install -e .
 ```
 
-No third-party dependencies — standard library only (Python ≥ 3.10).
+No third-party Python dependencies — standard library only (Python ≥ 3.10). The
+first run downloads the engine binary for your OS/arch (a few MB) and caches it
+under `~/.cache/simcode/`.
 
-## Usage
+## Run your controller
 
 ```bash
-# Fresh canonical run (seed 7 — the same map every city of this type starts from):
+# Run against the real engine. Inside your city repo it auto-detects which city
+# this is and borrows that city's map seed (public, no token needed):
 robocity-sim run main.py
 
-# Shorter run, only the summary:
-robocity-sim run main.py --ticks 200 --quiet
-
-# Machine-readable output (for tooling / an AI reading the result):
-robocity-sim run main.py --ticks 500 --json
+# Shorter horizon, machine-readable output (for tooling / an AI reading the result):
+robocity-sim run main.py --ticks 200 --json
 ```
 
 Options:
@@ -59,52 +44,53 @@ Options:
 | Flag | Meaning |
 | --- | --- |
 | `--ticks N` | how many ticks to simulate (default 500) |
-| `--seed S` | world seed (default 7 — the canonical shared map) |
-| `--json` | emit a JSON document (`summary` + full `feed`) instead of text |
-| `--quiet` | suppress the per-tick feed; print only the summary |
+| `--seed S` | world seed (default: your city's seed, else the canonical map, 7) |
+| `--module M` | game module whose engine to run (default `robot-city`) |
+| `--city SLUG` | borrow the seed from this city (default: auto-detected from the git remote) |
+| `--server URL` | server base URL for engine download + seed lookup (default `https://robocity.lyabah.com`) |
+| `--json` | emit the summary as JSON instead of the readable block |
 
-The default output streams the per-tick **activity feed** (game events + your
-`r.log(...)` lines, tick-stamped) and ends with a **SUMMARY**: final tick, robot
-count, buildings by type, ore/metal mined+stored, discovered-cell count, and how
-many robots were destroyed.
+`main.py` is used **unchanged**: it does `from simcode import on, robots, world,
+buildings`, registers `@on.idle` etc., and the tool imports it and drives the tick
+loop against the engine for you.
 
-### Preview from a live city (`--from-live`)
+The run ends with a **SUMMARY**: ticks run, robots alive/destroyed, buildings by
+type, Base level, handler errors, how much of the map was revealed, and the commands
+and events seen. It exits non-zero if any of your handlers raised — so CI or an AI
+loop notices a broken controller.
 
-Seed the local run from a city's *current* world instead of a fresh start:
+### What "good" looks like
+- `robots destroyed` should be **0** — a non-zero count means a robot ran its battery
+  dry mid-flight (recharge earlier / fly shorter hops).
+- Buildings growing (mining, storage, flying_station, station-produced robots) and the
+  Base level climbing means the city is actually developing, not just exploring. The
+  shipped starter only explores, so a fresh run shows `buildings: base=1, storage=1`
+  and Base level 1 — beat that.
+
+## Inspect a live city without simulating
 
 ```bash
-export SIMCODE_TOKEN=...        # your MCP bearer token
-robocity-sim run main.py --from-live --city my-city-slug
-# optional: --server https://robocity.lyabah.com  (default)
+robocity-sim inspect                 # compact status of this repo's city (public, no token)
+robocity-sim inspect --state         # full current world state (public, no token)
+robocity-sim inspect --logs 100      # recent activity log lines   (needs SIMCODE_TOKEN)
+robocity-sim inspect --list          # list your cities            (needs SIMCODE_TOKEN)
 ```
 
-This fetches the city's public world snapshot over the MCP endpoint
-(`POST {server}/mcp`, JSON-RPC `tools/call` → `get_world_state`) and rebuilds an
-**approximate** world from it. Because the public snapshot is a lossy, fog-limited
-view (no hidden spot richness, no in-flight command internals), a `--from-live`
-run is a **rough preview** of "where my city is now", not an exact continuation.
-If `SIMCODE_TOKEN` is unset you get a clear error.
+`--state`/status come from the city's **public** snapshot (no token). `--logs` and
+`--list` use the authenticated MCP tools and need `SIMCODE_TOKEN`.
 
-## What it models
+## How it works
 
-Everything the reference module does, ported faithfully and deterministically:
+`robocity-sim run` downloads the module's engine (`libengine-<module>-<os>-<arch>`,
+the same c-shared library the server runs), loads it via `ctypes`, and drives it one
+tick at a time: it feeds the engine your controller's command intents and your active
+event subscriptions, gets back the triggered events + a world delta, mirrors the
+world exactly like the browser does, and dispatches events through the **unchanged**
+vendored `simcode` SDK. So the only thing that differs from production is the
+transport — the game logic is identical.
 
-- endless, continuous world with lazy **hash-based** cell generation (fog of war),
-- **flying** robots with float positions and **energy** (drain on flight,
-  destruction mid-flight when the battery hits 0, recharge on a Flying Station /
-  the Base),
-- **autonomous mining** into capped storage, **self-completing** construction
-  sites (`world.build`), and **Flying Station robot production**,
-- the full event set (`spawn`, `idle`, `arrived`, `blocked`, `construction_*`,
-  `resource_delivered`, `spot_depleted`, `storage_full`, `inventory_full`,
-  `robot_produced`, `robot_destroyed`, `charge_complete`, `message`,
-  `base_level_up`, `quest_updated`), delivered to
-  your handlers exactly as on the server (intents lag one tick, same as prod).
-
-## Determinism
-
-Running the same controller with the same seed twice produces **identical** output
-(event feed and summary). The engine has no wall-clock or RNG in its hot path.
+Set `SIMCODE_ENGINE_SO=/path/to/libengine-*.so` to run against a local engine build
+instead of downloading (used by the smoke test and engine developers).
 
 ## License
 

@@ -90,8 +90,8 @@ def build_subscribe(city: str, event: str, once: bool, action: str = "subscribe"
 class Intent:
     """One outbound command intent, addressed to a single target id.
 
-    ``robot`` is the target id — a robot id for robot actions, or a Flying
-    Station building id for station commands (``build_robot``/``base_cancel``).
+    ``robot`` is the target id — a robot id for robot actions, or the Base
+    building id for direct Base commands (``build_robot``/``base_cancel``).
     """
 
     city: str

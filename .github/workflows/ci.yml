@@ -12,5 +12,5 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: pip install -e . pytest
-      - name: Test (incl. parity vs the server engine fixture)
+      - name: Test (CLI + helpers; the real-engine smoke test is skipped without a local .so)
         run: python -m pytest -q
