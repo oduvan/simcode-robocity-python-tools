@@ -11,7 +11,7 @@ State store layout (Redis) — each key is a plain JSON **string** (not a hash):
     city.<id>.state.meta       {"tick","seq","city"}
     city.<id>.state.world      {"size":[w,h],"seed"}
     city.<id>.state.robots     JSON ARRAY of {"id","type","pos":[x,y],"facing",
-                               "inventory":{ore,metal,capacity},"state","command"}
+                               "inventory":{"items":{item:qty},"capacity"},"state","command"}
     city.<id>.state.buildings  JSON ARRAY of {"id","type","pos","status","storage",
                                + mining:"spot", base:"production", constructing:"construction"}
     city.<id>.state.tiles      JSON ARRAY of {"x","y","terrain","spot"|null}
@@ -39,39 +39,53 @@ from .contract import Accumulator, make_command
 # --------------------------------------------------------------------------- #
 # small value views
 # --------------------------------------------------------------------------- #
-class Inventory:
-    __slots__ = ("ore", "metal", "capacity")
+class Store:
+    """A multi-item resource pool (#5): item name -> quantity, bounded by a
+    shared total ``capacity`` (mixed items share the cap). Backs both a robot's
+    ``inventory`` and a building's ``storage``.
+
+    Item access is dict-like and forgiving: ``store["ore"]`` / ``store.get("ore")``
+    read 0 for a missing item, and ``"ore" in store`` tests presence.
+    """
+
+    __slots__ = ("items", "capacity")
 
     def __init__(self, data: dict | None):
         data = data or {}
-        self.ore = data.get("ore", 0)
-        self.metal = data.get("metal", 0)
+        # Copy so a handle never aliases (and can't mutate) the parsed state.
+        self.items: dict[str, int] = dict(data.get("items") or {})
         self.capacity = data.get("capacity", 0)
 
     @property
+    def total(self) -> int:
+        """Total item count held (Σ over items)."""
+        return sum(self.items.values())
+
+    @property
     def free(self) -> int:
-        return max(0, self.capacity - (self.ore + self.metal))
+        return max(0, self.capacity - self.total)
 
     @property
     def is_full(self) -> bool:
         return self.free <= 0
 
+    def get(self, item: str, default: int = 0) -> int:
+        return self.items.get(item, default)
+
+    def __getitem__(self, item: str) -> int:
+        return self.items.get(item, 0)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.items
+
+    def __iter__(self):
+        return iter(self.items)
+
+    def __bool__(self) -> bool:
+        return self.total > 0
+
     def __repr__(self) -> str:
-        return f"Inventory(ore={self.ore}, metal={self.metal}, capacity={self.capacity})"
-
-
-class Storage:
-    __slots__ = ("ore", "metal", "capacity")
-
-    def __init__(self, data: dict | None):
-        data = data or {}
-        self.ore = data.get("ore", 0)
-        self.metal = data.get("metal", 0)
-        self.capacity = data.get("capacity", 0)
-
-    @property
-    def free(self) -> int:
-        return max(0, self.capacity - (self.ore + self.metal))
+        return f"Store(items={self.items!r}, capacity={self.capacity})"
 
 
 class _Attr:
@@ -222,8 +236,8 @@ class RobotHandle:
         return self._d.get("command")
 
     @property
-    def inventory(self) -> Inventory:
-        return Inventory(self._d.get("inventory"))
+    def inventory(self) -> Store:
+        return Store(self._d.get("inventory"))
 
     @property
     def energy(self):
@@ -273,17 +287,23 @@ class RobotHandle:
         holds the robot until full -> charge_complete)."""
         return self._emit("charge")
 
-    def pick_up(self, ore=None, metal=None):
-        # No args -> pick up ALL; otherwise positional [ore, metal].
-        if ore is None and metal is None:
+    def pick_up(self, item=None, amount=None):
+        # Multi-item haul (#5). No args -> pick up ALL (fill across items);
+        # item only -> all of that item; item + amount -> that amount.
+        if item is None:
             return self._emit("pick_up")
-        return self._emit("pick_up", ore or 0, metal or 0)
+        if amount is None:
+            return self._emit("pick_up", item)
+        return self._emit("pick_up", item, amount)
 
-    def drop(self, ore=None, metal=None):
-        # No args -> drop ALL; otherwise positional [ore, metal].
-        if ore is None and metal is None:
+    def drop(self, item=None, amount=None):
+        # No args -> drop ALL held; item only -> all of that item;
+        # item + amount -> that amount.
+        if item is None:
             return self._emit("drop")
-        return self._emit("drop", ore or 0, metal or 0)
+        if amount is None:
+            return self._emit("drop", item)
+        return self._emit("drop", item, amount)
 
     def send(self, target_id, payload):
         return self._emit("send", target_id, payload)
@@ -391,8 +411,12 @@ class BuildingHandle:
         return self._d.get("progress")
 
     @property
-    def storage(self) -> Storage:
-        return Storage(self._d.get("storage"))
+    def storage(self) -> Store:
+        return Store(self._d.get("storage"))
+
+    def stored(self, item: str) -> int:
+        """Quantity of ``item`` in this building's storage store (0 if absent)."""
+        return self.storage.get(item)
 
     @property
     def spot(self) -> Optional[_Attr]:
