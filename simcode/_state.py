@@ -419,6 +419,39 @@ class BuildingHandle:
         return self.storage.get(item)
 
     @property
+    def input(self) -> Optional[Store]:
+        """Processor input pool (#5): items hauled IN and consumed per batch
+        (a robot ``drop`` on a processor feeds this). ``None`` on non-processor
+        buildings (Base / Storage / Station)."""
+        d = self._d.get("input")
+        return Store(d) if d is not None else None
+
+    @property
+    def output(self) -> Optional[Store]:
+        """Processor output pool (#5): produced items waiting to be hauled away
+        (a robot ``pick_up`` on a processor pulls from this). ``None`` on
+        non-processor buildings."""
+        d = self._d.get("output")
+        return Store(d) if d is not None else None
+
+    @property
+    def recoverable(self) -> Optional[Store]:
+        """Decommissioning store (#5): present only while ``status`` is
+        ``"decommissioning"`` — the recovered build cost + the building's leftover
+        contents, waiting for robots to ``pick_up`` and haul to Storage. ``None``
+        otherwise."""
+        d = self._d.get("recoverable")
+        return Store(d) if d is not None else None
+
+    @property
+    def recipe(self) -> Optional[_Attr]:
+        """Processor recipe (#5): ``.inputs`` (item -> qty consumed per batch),
+        ``.output`` (item produced), ``.out_amount`` (units per batch), and
+        ``.ticks`` (batch process time). ``None`` on non-processor buildings."""
+        r = self._d.get("recipe")
+        return _Attr(r) if r else None
+
+    @property
     def spot(self) -> Optional[_Attr]:
         sp = self._d.get("spot")
         return _Attr(sp) if sp else None
@@ -457,6 +490,17 @@ class BuildingHandle:
     def cancel(self) -> "BuildingHandle":
         """Flying Station only: cancel THIS station's production queue."""
         self._acc.add_command(self.id, make_command("base_cancel"))
+        return self
+
+    def destroy(self) -> "BuildingHandle":
+        """Decommission THIS building (#5) — a world-scoped ``destroy`` order at
+        this building's position (sibling of ``world.build``/``world.destroy``).
+        The building enters ``decommissioning``; its build cost + current contents
+        become a ``recoverable`` store for robots to haul to Storage, then it is
+        removed and ``building_destroyed`` fires."""
+        pos = self.position
+        x, y = (pos or (0, 0))
+        self._acc.add_command("world", make_command("destroy", int(x), int(y)))
         return self
 
     def __repr__(self) -> str:
@@ -542,6 +586,18 @@ class World:
         once supplied. type ∈ mining | storage | flying_station."""
         self._reader.accumulator.add_command(
             "world", make_command("build", type, int(x), int(y))
+        )
+        return self
+
+    def destroy(self, x, y):
+        """Decommission the building at (x, y) (#5) — a world-scoped order and
+        sibling of :meth:`build`, not tied to any robot. The building enters
+        ``decommissioning``; its build cost + current contents become a
+        ``recoverable`` store for robots to haul to Storage, then it is removed
+        and ``building_destroyed`` fires. (x, y) may be any cell in the building's
+        footprint."""
+        self._reader.accumulator.add_command(
+            "world", make_command("destroy", int(x), int(y))
         )
         return self
 

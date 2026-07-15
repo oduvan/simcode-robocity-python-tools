@@ -55,15 +55,25 @@ EVENTS = [
     "spot_depleted", "storage_full", "inventory_full",
     "robot_produced", "robot_destroyed", "charge_complete", "message",
     "base_level_up", "quest_updated",
+    # Supply-chain (#5): building-addressed processor/decommission events.
+    "resource_produced", "production_blocked", "building_destroyed",
+    "decommission_started",
 ]
 
-# --- Commands (script -> GAME). Robots fly + haul + charge; world.build is
-# world-scoped (not robot-bound). ---
+# --- Commands (script -> GAME). Robots fly + haul + charge; world.build and
+# world.destroy are world-scoped (not robot-bound). ---
 COMMANDS = [
     "move_to", "pick_up", "drop", "charge", "send", "cancel",
-    "build", "build_robot", "base_cancel",
+    "build", "build_robot", "base_cancel", "destroy",
 ]
 
 # --- Building / robot enums (mirror of schema.go) ---
-BUILDING_TYPES = ["base", "mining", "storage", "flying_station"]
+BUILDING_TYPES = [
+    "base", "mining", "storage", "flying_station",
+    # Supply-chain (#5) processors + upgraded buildings.
+    "smelter", "wire_mill", "glassworks", "kiln",
+    "assembler", "electronics_lab", "alloy_furnace",
+    "module_assembler", "frame_shop",
+    "deep_mine", "warehouse", "charging_tower",
+]
 ROBOT_STATES = ["idle", "moving", "charging", "hauling", "blocked"]

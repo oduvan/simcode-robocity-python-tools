@@ -90,6 +90,10 @@ class _WorldProxy:
         """Place a construction site of ``type`` at (x, y) — world-scoped."""
         return current().state.world.build(type, x, y)
 
+    def destroy(self, x, y):
+        """Decommission the building at (x, y) — world-scoped (#5)."""
+        return current().state.world.destroy(x, y)
+
 
 class _StoreProxy:
     """City-wide store; reads current state, records writes onto the intent."""
