@@ -58,13 +58,19 @@ EVENTS = [
     # Supply-chain (#5): building-addressed processor/decommission events.
     "resource_produced", "production_blocked", "building_destroyed",
     "decommission_started",
+    # Living economy (#42): fleet expiry + building maintenance.
+    "robot_expired",         # {robot_id} — cumulative flight distance exceeded lifespan
+    "maintenance_needed",    # {building_id, condition} — wearing building's condition low
+    "building_stopped",      # {building_id} — condition hit 0, production halted
+    "repair_complete",       # {building_id, robot_id, condition} — repair ran dry / hit full
 ]
 
-# --- Commands (script -> GAME). Robots fly + haul + charge; world.build and
-# world.destroy are world-scoped (not robot-bound). ---
+# --- Commands (script -> GAME). Robots fly + haul + charge + repair; world.build
+# and world.destroy are world-scoped (not robot-bound). ---
 COMMANDS = [
     "move_to", "pick_up", "drop", "charge", "send", "cancel",
     "build", "build_robot", "base_cancel", "destroy",
+    "repair",  # (#42) Mechanic drains held metal into a worn building's condition
 ]
 
 # --- Building / robot enums (mirror of schema.go) ---
@@ -76,4 +82,7 @@ BUILDING_TYPES = [
     "module_assembler", "frame_shop",
     "deep_mine", "warehouse", "charging_tower",
 ]
-ROBOT_STATES = ["idle", "moving", "charging", "hauling", "blocked"]
+ROBOT_STATES = ["idle", "moving", "charging", "hauling", "repairing", "blocked"]
+
+# --- Robot types (#42): classes chosen at build_robot() time, level-gated. ---
+ROBOT_TYPES = ["builder", "hauler", "scout", "mechanic", "heavy_hauler", "ranger"]

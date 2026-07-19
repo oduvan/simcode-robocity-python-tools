@@ -246,6 +246,20 @@ class RobotHandle:
         return self._d.get("energy")
 
     @property
+    def life_remaining(self):
+        """Living economy (#42): remaining cumulative flight distance before the
+        robot wears out and expires (``robot_expired``). Distinct from ``energy``
+        — expiry is inevitable end-of-life, not the avoidable battery death.
+        Plan replacements before this reaches 0."""
+        return self._d.get("life_remaining")
+
+    @property
+    def life_max(self):
+        """Living economy (#42): this robot type's max flight-distance lifespan
+        (higher tiers live longer). ``life_remaining`` counts down from here."""
+        return self._d.get("life_max")
+
+    @property
     def cell(self):
         """The robot's rounded integer cell (where it interacts with buildings)."""
         pos = self.position
@@ -286,6 +300,14 @@ class RobotHandle:
         """Recharge the battery while parked on a Flying Station (explicit only;
         holds the robot until full -> charge_complete)."""
         return self._emit("charge")
+
+    def repair(self):
+        """Living economy (#42): Mechanic only. On/adjacent to a worn building,
+        start a repair process that drains this robot's held metal into the
+        building's condition over time (targets the building on the robot's cell,
+        like ``charge``). Stops when the metal runs out or condition hits full ->
+        repair_complete. Takes no args."""
+        return self._emit("repair")
 
     def pick_up(self, item=None, amount=None):
         # Multi-item haul (#5). No args -> pick up ALL (fill across items);
@@ -472,6 +494,21 @@ class BuildingHandle:
         return self._d.get("level")
 
     @property
+    def condition(self):
+        """Living economy (#42): a wearing building's condition meter (0-100).
+        Present only on T2/T3 processors, which wear down as they produce —
+        productivity scales with it and it stops producing at 0. A Mechanic
+        restores it with ``repair()``. ``None`` on buildings that never wear
+        (Base / Storage / Station / Mining / T1 processors)."""
+        return self._d.get("condition")
+
+    @property
+    def unlocks(self):
+        """Base only (#42): the building + robot types buildable at the Base's
+        current level (the unlock ladder). ``None`` on non-Base buildings."""
+        return self._d.get("unlocks")
+
+    @property
     def quest(self) -> Optional[_Attr]:
         """Base only: the current quest — ``.required`` and ``.progress`` are each
         ``{ore, metal}`` (progress = min(stored, required)). None on non-Base
@@ -480,11 +517,26 @@ class BuildingHandle:
         return _Attr(q) if q else None
 
     # ----- Flying Station commands -----
-    def build_robot(self, n: int = 1) -> "BuildingHandle":
-        """Flying Station only: queue ``n`` robots built at THIS station. The
-        command targets this building's id; the engine rejects a non-station
-        target with a ``blocked`` reason ``not_a_station``."""
-        self._acc.add_command(self.id, make_command("build_robot", n))
+    def build_robot(self, type: str | int = "builder", n: int = 1) -> "BuildingHandle":
+        """Flying Station only (#42): queue ``n`` robots of ``type`` built at THIS
+        station. ``type`` is a robot class (``builder``/``hauler``/``scout``/
+        ``mechanic``/``heavy_hauler``/``ranger`` — see ``wire.ROBOT_TYPES``);
+        higher classes are gated behind Base levels and rejected with a ``blocked``
+        reason ``level_required`` below their unlock level. The command targets
+        this building's id (a non-station target is rejected ``not_a_station``) and
+        sends positional args ``[type, n]``.
+
+            station.build_robot()                 # 1 builder (default)
+            station.build_robot("hauler")         # 1 hauler
+            station.build_robot("scout", 3)       # 3 scouts
+            station.build_robot(type="hauler", n=2)
+
+        Back-compat: the old count-only ``build_robot(2)`` still works — an int in
+        the first position is read as the count with the default ``builder`` type.
+        """
+        if isinstance(type, int):
+            type, n = "builder", type
+        self._acc.add_command(self.id, make_command("build_robot", type, n))
         return self
 
     def cancel(self) -> "BuildingHandle":
