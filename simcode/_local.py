@@ -327,6 +327,10 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
         for it in intents:
             for c in it.commands:
                 cmd_counter[c.get("cmd", "?")] += 1
+            # Surface r.log(...) lines in the local runner's stdout — live they go to
+            # the city feed, but locally they'd otherwise vanish (only print() showed).
+            for msg in it.logs:
+                print(f"[log {it.robot} t{mirror.tick}] {msg}")
 
     buildings_by_type: Counter = Counter()
     for b in mirror.buildings.values():

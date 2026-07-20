@@ -7,7 +7,28 @@ Accessing them outside a handler raises a clear error.
 
 from __future__ import annotations
 
+import json
+
 from ._context import current
+
+# The city-wide store + robot memory are persisted as JSON (Redis in prod, the
+# tick request locally), so their values must be JSON-serializable. Catch the
+# common mistake (a set, a custom object) at ASSIGNMENT time with a message that
+# names the key, instead of a cryptic failure later when the store is flushed.
+_JSON_SCALARS = (str, int, float, bool, type(None))
+
+
+def _ensure_json(key, value):
+    if isinstance(value, _JSON_SCALARS):
+        return
+    try:
+        json.dumps(value)
+    except TypeError:
+        raise TypeError(
+            f"store[{key!r}] = {type(value).__name__} is not JSON-serializable; the "
+            f"store only holds JSON types (str/int/float/bool/list/dict/None) — e.g. "
+            f"use a list instead of a set."
+        ) from None
 
 
 class _RobotsProxy:
@@ -105,6 +126,7 @@ class _StoreProxy:
         return self._s()[key]
 
     def __setitem__(self, key, value):
+        _ensure_json(key, value)
         self._s()[key] = value
 
     def __contains__(self, key):
@@ -114,6 +136,8 @@ class _StoreProxy:
         return self._s().get(key, default)
 
     def setdefault(self, key, default=None):
+        if key not in self._s():
+            _ensure_json(key, default)
         return self._s().setdefault(key, default)
 
     def keys(self):
