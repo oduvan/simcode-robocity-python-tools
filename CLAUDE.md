@@ -69,15 +69,19 @@ from production is the transport. Two caveats:
 ## Inspect your city without simulating
 
 ```bash
-robocity-sim inspect             # this city's status         (public, no token)
-robocity-sim inspect --state     # full current world state   (public, no token)
-robocity-sim inspect --logs 100  # recent activity log lines  (needs SIMCODE_TOKEN)
-robocity-sim inspect --list      # all your cities            (needs SIMCODE_TOKEN)
+robocity-sim inspect             # this city's status                     (public, no token)
+robocity-sim inspect --state     # full current world state               (public, no token)
+robocity-sim inspect --logs 100  # recent activity log lines              (public, no token)
+robocity-sim inspect --errors    # unhandled exceptions since last release(public, no token)
+robocity-sim inspect --errors all  # …across every release
 ```
 
-`inspect` and `--state` read the **public** city snapshot (no token). `--logs` and
-`--list` use the authed MCP tools (`get_recent_logs` / `list_cities`) and need
-`SIMCODE_TOKEN`.
+`inspect` reads the server's **public REST API** — **no token, no MCP**: status/
+`--state` from the city snapshot, `--logs` from `/logs`, `--errors` from
+`/exceptions`. The city is auto-detected from this repo's git remote (or pass
+`--city <slug>`). `--errors` groups exceptions by type + file:line, each with a
+sample traceback and the log lines leading up to it — the first thing to check when
+a city looks "frozen" (a raise leaves a robot uncommanded).
 
 ## Workflow for iterating on a city controller
 

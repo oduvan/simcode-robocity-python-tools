@@ -2,8 +2,10 @@
 
 Used by the ``robocity-sim`` CLI to (a) resolve *which* city this repo is and its
 world seed — so a local run uses your city's actual map — and (b) back the
-``inspect`` command (state/status/logs). Everything here is plain ``urllib`` so the
-tool has **no runtime dependencies**.
+``inspect`` command (state / status / logs / exceptions). Everything is fetched
+from the server's **public REST API** (no token, no MCP) — the same endpoints the
+shareable live page uses — with plain ``urllib`` so the tool has **no runtime
+dependencies**.
 
 The actual simulation no longer lives in this repo: ``robocity-sim run`` drives the
 **real** game engine (downloaded on demand by the vendored :mod:`simcode._local` /
@@ -14,6 +16,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.parse
 import urllib.request
 import urllib.error
 from typing import Optional
@@ -60,21 +63,22 @@ def seed_for_city(server: str, slug: str) -> Optional[int]:
     return int(seed) if seed is not None else None
 
 
-def _mcp_call(server: str, token: str, name: str, arguments: dict) -> dict:
-    url = server.rstrip("/") + "/mcp"
-    body = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {"name": name, "arguments": arguments},
-    }).encode("utf-8")
-    req = urllib.request.Request(url, data=body, method="POST")
-    req.add_header("Content-Type", "application/json")
-    req.add_header("Accept", "application/json")
-    req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        raw = resp.read().decode("utf-8")
-    return json.loads(raw)
+def public_logs(server: str, slug: str, limit: int = 100) -> dict:
+    """Recent activity/log lines from the PUBLIC endpoint — no token. Same ring the
+    live page and get_recent_logs show: {slug, count, logs:[...]}."""
+    url = f"{server.rstrip('/')}/api/city/{slug}/logs?limit={int(limit)}"
+    return _http_get_json(url)
+
+
+def public_exceptions(server: str, slug: str, release: Optional[str] = None) -> dict:
+    """Unhandled exceptions the controller has thrown, from the PUBLIC endpoint —
+    no token. Grouped by type + file:line, each with a sample traceback and the
+    log lines leading up to it. Defaults to the current release; pass release='all'
+    (or a commit SHA) to widen. {slug, release, count, groups:[...]}."""
+    url = f"{server.rstrip('/')}/api/city/{slug}/exceptions"
+    if release:
+        url += "?release=" + urllib.parse.quote(release)
+    return _http_get_json(url)
 
 
 def parse_repo_slug(url: str) -> Optional[str]:
@@ -105,20 +109,3 @@ def git_repo_slug(directory: str) -> Optional[str]:
     if out.returncode != 0:
         return None
     return parse_repo_slug(out.stdout)
-
-
-def mcp_doc(server: str, token: str, name: str, arguments: dict):
-    """Call an MCP tool and return its parsed document (the text content block)."""
-    rpc = _mcp_call(server, token, name, arguments)
-    if rpc.get("error"):
-        raise ValueError(f"MCP error: {rpc['error']}")
-    result = rpc.get("result", rpc)
-    content = result.get("content") if isinstance(result, dict) else None
-    if isinstance(content, list):
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                try:
-                    return json.loads(block["text"])
-                except Exception:
-                    return block["text"]
-    return result

@@ -71,13 +71,16 @@ loop notices a broken controller.
 
 ```bash
 robocity-sim inspect                 # compact status of this repo's city (public, no token)
-robocity-sim inspect --state         # full current world state (public, no token)
-robocity-sim inspect --logs 100      # recent activity log lines   (needs SIMCODE_TOKEN)
-robocity-sim inspect --list          # list your cities            (needs SIMCODE_TOKEN)
+robocity-sim inspect --state         # full current world state           (public, no token)
+robocity-sim inspect --logs 100      # recent activity log lines          (public, no token)
+robocity-sim inspect --errors        # unhandled exceptions since last release (public, no token)
 ```
 
-`--state`/status come from the city's **public** snapshot (no token). `--logs` and
-`--list` use the authenticated MCP tools and need `SIMCODE_TOKEN`.
+All of `inspect` reads the server's **public REST API** — **no token, no MCP**
+(status/`--state` from the snapshot, `--logs` from `/logs`, `--errors` from
+`/exceptions`). The city is auto-detected from this repo's git remote (or `--city`).
+`--errors` is the first thing to check when a city looks "frozen" — a raised
+handler leaves a robot uncommanded.
 
 ## How it works
 

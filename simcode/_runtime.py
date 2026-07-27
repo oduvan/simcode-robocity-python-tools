@@ -36,6 +36,13 @@ _STATE_KEYS = ("meta", "world", "robots", "buildings", "tiles", "discovered")
 _EVENT_GROUP = "code"
 _EVENT_FIELD = "data"
 
+# Cap on the durable per-city exception ring (city.<id>.errors).
+_ERROR_RING = 200
+# Max user frames kept per exception traceback.
+_TB_DEPTH = 10
+# This package's directory — used to trim SDK frames out of a user traceback.
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 def _redis_from_addr(addr: str):
     import redis  # imported lazily so tests can run with a fake client
@@ -50,6 +57,9 @@ class Runtime:
     def __init__(self, redis_client, city: str):
         self.redis = redis_client
         self.city = city
+        # Deployed commit SHA (set by the orchestrator) — stamps exception records
+        # so "since the last release" filtering works. Empty when unknown.
+        self.release = os.environ.get("SIMCODE_RELEASE", "")
         self.ch = wire.channels(city)
         self._consumer = f"{_EVENT_GROUP}-{city}"
         self._group_ready = False
@@ -212,7 +222,7 @@ class Runtime:
                 try:
                     sub.handler(event)
                 except Exception:  # one bad handler must not kill the loop
-                    self._report_error(event, sub.handler)
+                    self._report_error(event, sub.handler, envelope, accumulator)
                 finally:
                     registry.fired(event.event, sub)
         finally:
@@ -227,9 +237,55 @@ class Runtime:
         # Intents are must-not-drop -> durable stream (xadd), not pub/sub.
         self.redis.xadd(self.ch["intent"], {"data": encode(envelope)})
 
-    def _report_error(self, event: Event, handler) -> None:
-        tb = traceback.format_exc()
+    def _report_error(self, event: Event, handler, envelope: dict, accumulator: Accumulator) -> None:
+        """An @on.<event> handler raised. Keep the sim running, but make the crash
+        VISIBLE: (1) a durable structured record on city.<id>.errors for the
+        exceptions view, (2) a concise line in the durable log stream so it shows in
+        get_recent_logs / `inspect --logs`, (3) the legacy lossy publish (live panel).
+        Never let error reporting itself raise."""
+        import sys
+
+        exc_type, exc, tb = sys.exc_info()
+        type_name = getattr(exc_type, "__name__", "Error")
+        message = str(exc)[:500]
+        where, frames = self._user_frames(tb)
         name = getattr(handler, "__name__", repr(handler))
+        tick = 0
+        try:
+            tick = int(envelope.get("tick") or 0)
+        except Exception:
+            pass
+
+        # (1) durable structured record — read back by /exceptions + get_recent_errors.
+        try:
+            rec = {
+                "release": self.release,
+                "tick": tick,
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "source": "user_handler",
+                "language": "python",
+                "type": type_name,
+                "message": message,
+                "where": where,
+                "traceback": frames,
+                "handler": name,
+                "event": event.event,
+                "robot": event.robot_id,
+            }
+            key = self.ch["errors"]
+            self.redis.rpush(key, encode(rec))
+            self.redis.ltrim(key, -_ERROR_RING, -1)
+        except Exception:
+            pass
+
+        # (2) concise durable log line (rides the intent this dispatch publishes).
+        try:
+            loc = f" at {where}" if where else ""
+            accumulator.add_log(event.robot_id or "code", f"handler_error [{event.event}] {type_name}: {message}{loc}")
+        except Exception:
+            pass
+
+        # (3) legacy lossy publish (live browser panel), best-effort.
         try:
             self.redis.publish(
                 self.ch["log"],
@@ -241,12 +297,36 @@ class Runtime:
                         "event": event.event,
                         "robot": event.robot_id,
                         "handler": name,
-                        "error": tb,
+                        "error": traceback.format_exc(),
                     }
                 ),
             )
         except Exception:
             pass
+
+    def _user_frames(self, tb) -> tuple[str, list]:
+        """Extract (where, traceback_lines) from a traceback, trimmed to the USER's
+        frames (drop SDK internals) so `where` points at the actual bug. Paths are
+        made repo-relative (…/srv/code/<city>/main.py -> main.py)."""
+        frames = traceback.extract_tb(tb)
+        user = [f for f in frames if not os.path.abspath(f.filename).startswith(_PKG_DIR)]
+        if not user:
+            user = frames  # can't tell — show everything rather than nothing
+        where = ""
+        if user:
+            last = user[-1]
+            where = f"{self._short(last.filename)}:{last.lineno}"
+        lines = [f"{self._short(f.filename)}:{f.lineno} in {f.name}" for f in user[-_TB_DEPTH:]]
+        return where, lines
+
+    def _short(self, path: str) -> str:
+        """Repo-relative file path: strip the /srv/code/<city>/ prefix if present,
+        else fall back to the basename."""
+        p = path.replace("\\", "/")
+        root = f"/srv/code/{self.city}/"
+        if root in p:
+            return p.split(root, 1)[1]
+        return os.path.basename(p)
 
     # ------------------------------------------------------------------ #
     # loop

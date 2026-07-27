@@ -28,6 +28,8 @@ def channels(city_id: str) -> dict:
         "event": p + "event",
         "intent": p + "intent",
         "log": p + "log",
+        "logs": p + "logs",
+        "errors": p + "errors",
         "metrics": p + "metrics",
         "introspect": p + "introspect",
     }

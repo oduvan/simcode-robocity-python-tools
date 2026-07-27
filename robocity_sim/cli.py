@@ -2,7 +2,7 @@
 
     robocity-sim run <main.py> [--ticks N] [--seed S] [--module M] [--json]
                                [--city SLUG] [--server URL]
-    robocity-sim inspect [--state | --logs [N] | --list] [--city SLUG] [--server URL]
+    robocity-sim inspect [--state | --logs [N] | --errors [RELEASE]] [--city SLUG] [--server URL]
 
 ``run`` drives your controller against the **REAL** Robot City engine — the exact
 same binary the server runs, downloaded on demand (and cached) by the vendored
@@ -73,22 +73,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_inspect(args: argparse.Namespace) -> int:
-    """Print a city's live info (state/status) or its logs / your cities — JSON,
-    no simulation. State & status come from the PUBLIC snapshot (no token);
-    --logs and --list use the authed MCP tools (they need SIMCODE_TOKEN)."""
-    from .live import mcp_doc, git_repo_slug, slug_for_repo, public_snapshot
-
-    token = os.environ.get("SIMCODE_TOKEN")
+    """Print a city's live info as JSON, no simulation. Everything comes from the
+    server's PUBLIC REST API — no token, no MCP: state/status from the snapshot,
+    --logs from /logs, --errors from /exceptions. The city is auto-detected from
+    this repo's git remote (or pass --city)."""
+    from .live import (git_repo_slug, slug_for_repo, public_snapshot,
+                       public_logs, public_exceptions)
 
     try:
-        # --list lists YOUR cities → inherently owner-scoped, needs the token.
-        if args.list:
-            if not token:
-                print("error: --list needs SIMCODE_TOKEN (it lists your cities).", file=sys.stderr)
-                return 2
-            print(json.dumps(mcp_doc(args.server, token, "list_cities", {}), indent=2))
-            return 0
-
         # Resolve the city — token-free via the public repo->slug lookup.
         city = args.city
         if not city:
@@ -101,14 +93,13 @@ def cmd_inspect(args: argparse.Namespace) -> int:
                 print(f"error: no city on {args.server} is linked to {repo}.", file=sys.stderr)
                 return 2
 
-        if args.logs is not None:  # recent logs → authed MCP tool
-            if not token:
-                print("error: --logs needs SIMCODE_TOKEN.", file=sys.stderr)
-                return 2
-            doc = mcp_doc(args.server, token, "get_recent_logs", {"city": city, "limit": args.logs})
-        elif args.state:  # full world state → PUBLIC snapshot (no token)
+        if args.errors is not None:  # unhandled exceptions since last release → PUBLIC /exceptions
+            doc = public_exceptions(args.server, city, args.errors or None)
+        elif args.logs is not None:  # recent logs → PUBLIC /logs
+            doc = public_logs(args.server, city, args.logs)
+        elif args.state:  # full world state → PUBLIC snapshot
             doc = public_snapshot(args.server, city)
-        else:  # default: a compact status derived from the PUBLIC snapshot (no token)
+        else:  # default: a compact status derived from the PUBLIC snapshot
             doc = _status_from_snapshot(city, public_snapshot(args.server, city))
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -160,14 +151,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     insp = sub.add_parser(
         "inspect",
-        help="print your city's live info (state/status/logs) as JSON — like the MCP tools, no sim")
-    insp.add_argument("--state", action="store_true", help="full current world state")
+        help="print your city's live info (state/status/logs/errors) as JSON — public REST, no token, no sim")
+    insp.add_argument("--state", action="store_true", help="full current world state (public snapshot)")
     insp.add_argument("--logs", nargs="?", type=int, const=100, default=None,
                       metavar="N", help="recent activity log lines (default 100)")
-    insp.add_argument("--list", action="store_true", help="list your cities (no city needed)")
+    insp.add_argument("--errors", nargs="?", const="", default=None, metavar="RELEASE",
+                      help="unhandled exceptions since your last release; pass 'all' or a commit SHA to widen")
     insp.add_argument("--city", default=None,
                       help="city slug (default: auto-detected from this repo's git remote)")
-    insp.add_argument("--server", default="https://robocity.lyabah.com", help="MCP server base URL")
+    insp.add_argument("--server", default="https://robocity.lyabah.com", help="server base URL")
     insp.set_defaults(func=cmd_inspect)
     return p
 
