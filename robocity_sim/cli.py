@@ -113,7 +113,7 @@ def _status_from_snapshot(city: str, snap: dict) -> dict:
     by_type: dict = {}
     for b in snap.get("buildings", []):
         by_type[b.get("type", "?")] = by_type.get(b.get("type", "?"), 0) + 1
-    return {
+    out = {
         "city": city,
         "tick": snap.get("tick"),
         "seed": (snap.get("world") or {}).get("seed"),
@@ -123,6 +123,13 @@ def _status_from_snapshot(city: str, snap: dict) -> dict:
         "discovered_cells": len(snap.get("discovered", [])),
         "stats": snap.get("stats"),
     }
+    # Health SIGNAL: unhandled exceptions since your last release. A raise leaves a
+    # robot uncommanded, so a "frozen" city is usually this.
+    he = snap.get("handler_errors") or 0
+    out["handler_errors"] = he
+    if he:
+        out["hint"] = f"{he} unhandled exception(s) since your last release — run: robocity-sim inspect --errors"
+    return out
 
 
 def build_parser() -> argparse.ArgumentParser:
