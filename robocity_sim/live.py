@@ -21,7 +21,7 @@ import urllib.request
 import urllib.error
 from typing import Optional
 
-DEFAULT_SERVER = "https://robocity.lyabah.com"
+DEFAULT_SERVER = "https://simcode.lyabah.com"
 CANONICAL_SEED = 7  # the module's canonical map seed (matches the engine default)
 
 

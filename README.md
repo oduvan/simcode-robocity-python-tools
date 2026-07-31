@@ -47,7 +47,7 @@ Options:
 | `--seed S` | world seed (default: your city's seed, else the canonical map, 7) |
 | `--module M` | game module whose engine to run (default `robot-city`) |
 | `--city SLUG` | borrow the seed from this city (default: auto-detected from the git remote) |
-| `--server URL` | server base URL for engine download + seed lookup (default `https://robocity.lyabah.com`) |
+| `--server URL` | server base URL for engine download + seed lookup (default `https://simcode.lyabah.com`) |
 | `--json` | emit the summary as JSON instead of the readable block |
 
 `main.py` is used **unchanged**: it does `from simcode import on, robots, world,

@@ -11,7 +11,7 @@ module from its distribution endpoint (#29):
 
 The library is cached at ``~/.cache/simcode/engine-<module>-<version>-<platform>.so``
 and re-used on later runs (skip re-download when the cached module+version matches).
-The server base URL is ``$SIMCODE_SERVER`` (default ``https://robocity.lyabah.com``).
+The server base URL is ``$SIMCODE_SERVER`` (default ``https://simcode.lyabah.com``).
 
 The engine is **glibc**-linked, so it can only be dlopen'd by a glibc Python
 (``python:*-slim``); musl/alpine cannot load it. This module doesn't enforce that
@@ -27,7 +27,7 @@ import platform
 import urllib.error
 import urllib.request
 
-DEFAULT_SERVER = "https://robocity.lyabah.com"
+DEFAULT_SERVER = "https://simcode.lyabah.com"
 
 
 class EngineDownloadError(RuntimeError):

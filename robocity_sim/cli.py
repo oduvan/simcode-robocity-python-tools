@@ -152,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     run.add_argument("--city", default=None,
                      help="city slug to borrow the seed from (default: auto-detected from git remote)")
-    run.add_argument("--server", default="https://robocity.lyabah.com",
+    run.add_argument("--server", default="https://simcode.lyabah.com",
                      help="server base URL (for engine download + seed lookup)")
     run.set_defaults(func=cmd_run)
 
@@ -166,7 +166,7 @@ def build_parser() -> argparse.ArgumentParser:
                       help="unhandled exceptions since your last release; pass 'all' or a commit SHA to widen")
     insp.add_argument("--city", default=None,
                       help="city slug (default: auto-detected from this repo's git remote)")
-    insp.add_argument("--server", default="https://robocity.lyabah.com", help="server base URL")
+    insp.add_argument("--server", default="https://simcode.lyabah.com", help="server base URL")
     insp.set_defaults(func=cmd_inspect)
     return p
 
