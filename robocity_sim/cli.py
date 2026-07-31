@@ -152,8 +152,9 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     run.add_argument("--city", default=None,
                      help="city slug to borrow the seed from (default: auto-detected from git remote)")
-    run.add_argument("--server", default="https://simcode.lyabah.com",
-                     help="server base URL (for engine download + seed lookup)")
+    run.add_argument("--server", default=None,
+                     help="server base URL for engine download + seed lookup "
+                          "(default: $SIMCODE_SERVER, else the public server)")
     run.set_defaults(func=cmd_run)
 
     insp = sub.add_parser(
@@ -166,7 +167,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="unhandled exceptions since your last release; pass 'all' or a commit SHA to widen")
     insp.add_argument("--city", default=None,
                       help="city slug (default: auto-detected from this repo's git remote)")
-    insp.add_argument("--server", default="https://simcode.lyabah.com", help="server base URL")
+    insp.add_argument("--server", default=None,
+                      help="server base URL (default: $SIMCODE_SERVER, else the public server)")
     insp.set_defaults(func=cmd_inspect)
     return p
 
@@ -174,6 +176,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    # One source of truth for the default server: the SDK's env-aware resolver
+    # ($SIMCODE_SERVER, else the public default baked into the SDK). An explicit
+    # --server still wins. This keeps the URL in exactly ONE place.
+    if getattr(args, "server", None) is None:
+        from simcode._engine_dl import server_base
+        args.server = server_base()
     return args.func(args)
 
 
