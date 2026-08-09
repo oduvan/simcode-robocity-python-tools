@@ -54,12 +54,27 @@ def public_snapshot(server: str, slug: str) -> dict:
 def seed_for_city(server: str, slug: str) -> Optional[int]:
     """The world seed of a city, from its public snapshot — so a local run uses the
     same map as your live city. Returns None if it can't be fetched."""
+    seed, _ = world_of_city(server, slug)
+    return seed
+
+
+def world_of_city(server: str, slug: str):
+    """``(seed, city_config)`` from a city's public snapshot.
+
+    Both come from the same ``world`` doc in ONE fetch, on purpose: borrowing the
+    seed without the config gave you the city's MAP but not its WORLD — a city
+    created with ``starting_fleet: 5`` ran locally with the module default (#50).
+    Returns ``(None, None)`` if it can't be fetched.
+    """
     try:
         snap = public_snapshot(server, slug)
     except Exception:
-        return None
-    seed = (snap.get("world") or {}).get("seed")
-    return int(seed) if seed is not None else None
+        return None, None
+    world = snap.get("world") or {}
+    seed = world.get("seed")
+    cfg = world.get("config")
+    return (int(seed) if seed is not None else None,
+            cfg if isinstance(cfg, dict) else None)
 
 
 def public_logs(server: str, slug: str, limit: int = 100) -> dict:

@@ -25,7 +25,7 @@ import sys
 
 def cmd_run(args: argparse.Namespace) -> int:
     from simcode._local import run_local, _format_summary
-    from .live import git_repo_slug, slug_for_repo, seed_for_city
+    from .live import git_repo_slug, slug_for_repo, world_of_city
 
     if not os.path.exists(args.controller):
         print(f"error: no such controller file: {args.controller!r}", file=sys.stderr)
@@ -42,21 +42,28 @@ def cmd_run(args: argparse.Namespace) -> int:
             except Exception:
                 city = None  # offline / server down -> fall back to the canonical seed
 
-    # Pick the seed: explicit --seed wins; else this city's live seed; else canonical.
-    seed = args.seed
-    if seed is None and city:
-        seed = seed_for_city(args.server, city)
+    # Pick the seed AND the per-city config: explicit --seed wins; else this
+    # city's live values; else the canonical map with module defaults. Config
+    # rides along with the seed so the local world matches the real one (#50).
+    seed, city_config = args.seed, None
+    if city:
+        live_seed, city_config = world_of_city(args.server, city)
+        if seed is None:
+            seed = live_seed
     if seed is None:
         seed = 7  # the module's canonical map
 
     if not args.json:
         where = f"city '{city}'" if city else "the canonical map"
+        if city and city_config:
+            where += f" + its config ({', '.join(sorted(city_config))})"
         print(f"running your controller against the REAL {args.module} engine "
               f"(seed {seed}, from {where}, {args.ticks} ticks)…")
 
     try:
         summary = run_local(args.controller, seed=seed, ticks=args.ticks,
-                            module=args.module, city=(city or "local"))
+                            module=args.module, city=(city or "local"),
+                            city_config=city_config)
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

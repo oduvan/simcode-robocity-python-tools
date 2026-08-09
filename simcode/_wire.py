@@ -84,7 +84,7 @@ BUILDING_TYPES = [
     "module_assembler", "frame_shop",
     "deep_mine", "warehouse", "charging_tower",
 ]
-ROBOT_STATES = ["idle", "moving", "charging", "hauling", "repairing", "blocked"]
+ROBOT_STATES = ["idle", "moving", "charging", "repairing"]
 
 # --- Robot types (#42): classes chosen at build_robot() time, level-gated. ---
 ROBOT_TYPES = ["builder", "hauler", "scout", "mechanic", "heavy_hauler", "ranger"]

@@ -275,9 +275,20 @@ def _dispatch_tick(events: list, mirror: WorldMirror, accumulator: Accumulator,
             reset_context(token)
 
 
+def _engine_config(city: str, seed: int, city_config: dict | None) -> dict:
+    """The engine request's `config` block. `config` here is the per-city options
+    blob, NOT the module's tuning table (`module`) — two different documents that
+    both used to be called "config"; see docs/glossary.md."""
+    cfg: dict = {"city": city, "seed": seed}
+    if city_config:
+        cfg["config"] = city_config
+    return cfg
+
+
 def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
               so_path: str | None = None, city: str = "local",
-              reset_registry: bool = True, module: str = "robot-city") -> dict:
+              reset_registry: bool = True, module: str = "robot-city",
+              city_config: dict | None = None) -> dict:
     """Run a user controller against the real engine for ``ticks`` ticks.
 
     Imports ``entry_path`` (registering its handlers), then runs the event ->
@@ -306,7 +317,7 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
     for _ in range(ticks):
         subs = registry.events  # picks up runtime subscribe()/@on changes
         resp = engine.tick({
-            "config": {"city": city, "seed": seed},
+            "config": _engine_config(city, seed, city_config),
             "subscriptions": subs,
             "map": engine_map,
             "commands": commands,

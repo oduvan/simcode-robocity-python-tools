@@ -74,10 +74,20 @@ class Event:
 
 
 def build_subscribe(city: str, event: str, once: bool, action: str = "subscribe") -> dict:
+    """Build a subscribe/unsubscribe envelope.
+
+    ``cancel`` is THE field GAME reads to remove a subscription
+    (contract.Subscribe has no ``action`` field at all — see engine.go's
+    ``if sub.Cancel``). Sending only ``action`` made unsubscribe a silent no-op:
+    the engine saw cancel=false and treated it as a re-subscribe (#49).
+    ``action`` is kept because the Go client also sends it and it reads well in
+    logs, but ``cancel`` is what actually takes effect.
+    """
     return {
         "city": city,
         "type": wire.TYPE_SUBSCRIBE,
-        "action": action,          # "subscribe" | "unsubscribe"
+        "action": action,                       # human-readable; NOT read by GAME
+        "cancel": action == "unsubscribe",      # the field GAME acts on
         "event": event,
         "once": bool(once),
     }

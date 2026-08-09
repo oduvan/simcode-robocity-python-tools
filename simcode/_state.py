@@ -429,8 +429,32 @@ class BuildingHandle:
     size = footprint
 
     @property
-    def progress(self):
-        return self._d.get("progress")
+    def progress(self) -> Optional[float]:
+        """How far along this building's current activity is, 0..1 — the same
+        number the live map draws.
+
+        There is no top-level ``progress`` on the wire (reading one is what made
+        this always return ``None``, #53). The real value lives on a sub-object,
+        and which one depends on what the building is doing:
+
+        * while ``status == "constructing"`` -> ``construction.progress``
+          (the self-building site's bar)
+        * otherwise, if it produces -> ``production.progress``
+          (a Flying Station building a robot, or a processor's current batch)
+        * ``None`` when the building is doing neither.
+
+        NOT the Base's quest progress: that is an item MAP, not a fraction —
+        read ``base.quest.progress`` for it. See
+        docs/modules/robot-city/glossary.md.
+        """
+        if self.status == "constructing":
+            c = self._d.get("construction") or {}
+            v = c.get("progress")
+            if v is not None:
+                return float(v)
+        p = self._d.get("production") or {}
+        v = p.get("progress")
+        return float(v) if v is not None else None
 
     @property
     def storage(self) -> Store:
