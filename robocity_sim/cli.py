@@ -6,7 +6,7 @@
 
 ``run`` drives your controller against the **REAL** Robot City engine — the exact
 same binary the server runs, downloaded on demand (and cached) by the vendored
-``simcode`` SDK. There is no local re-implementation to drift: your ``main.py``
+``simcode`` client library. There is no local re-implementation to drift: your ``main.py``
 runs against the actual game logic before you push.
 
 By default it uses **your city's map**: it resolves this repo -> city slug (public,
@@ -176,8 +176,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    # One source of truth for the default server: the SDK's env-aware resolver
-    # ($SIMCODE_SERVER, else the public default baked into the SDK). An explicit
+    # One source of truth for the default server: the client library's env-aware resolver
+    # ($SIMCODE_SERVER, else the public default baked into the client library). An explicit
     # --server still wins. This keeps the URL in exactly ONE place.
     if getattr(args, "server", None) is None:
         from simcode._engine_dl import server_base

@@ -41,7 +41,7 @@ def state_key(city_id: str, name: str) -> str:
 
 def store_key(city_id: str) -> str:
     """Durable, game-agnostic user-store key (mirror of contract.StoreKey). GAME
-    write-throughs the city-wide ``store`` here; the SDK reads it on (re)connect to
+    write-throughs the city-wide ``store`` here; the client library reads it on (re)connect to
     restore the store so a reloaded controller sees its prior values."""
     return f"city.{city_id}.store"
 

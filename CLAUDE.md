@@ -93,8 +93,8 @@ a city looks "frozen" (a raise leaves a robot uncommanded).
 
 ## Repo layout (for maintainers of THIS tool)
 
-- `simcode/` — the **vendored client SDK**, copied verbatim from the platform
-  (`sdk/python/simcode`). The user's code imports it. **Re-sync it whenever the SDK
+- `simcode/` — the **vendored client client library**, copied verbatim from the platform
+  (`clients/python/simcode`). The user's code imports it. **Re-sync it whenever the client library
   changes** — this is how the real-engine runner (`simcode/_local.py`,
   `simcode/_engine_dl.py`) reaches users.
 - `robocity_sim/` — the thin CLI (no engine of its own anymore):

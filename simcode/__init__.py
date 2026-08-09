@@ -1,8 +1,8 @@
-"""simcode — Python SDK for the Robot City Builder module.
+"""simcode — Python client for the Robot City Builder module.
 
 A city runs **one** user script that controls the whole fleet. The script
 imports this package, registers event handlers, and issues command intents to
-robots by id; the SDK runtime carries everything to/from GAME over Redis.
+robots by id; the client runtime carries everything to/from GAME over Redis.
 
     from simcode import on, robots, buildings, world, run
 
@@ -29,7 +29,7 @@ Public surface:
 - ``wire`` / ``contract`` — the frozen wire-protocol mirror.
 
 Security note (TODO): the user script is meant to run inside a platform-owned
-restricted sandbox; only the SDK runtime touches Redis. The sandbox itself is
+restricted sandbox; only the client runtime touches Redis. The sandbox itself is
 out of scope for this phase — see docs/sandbox-security.md.
 """
 

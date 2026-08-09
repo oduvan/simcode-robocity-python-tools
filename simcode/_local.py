@@ -1,4 +1,4 @@
-"""An OFFLINE, engine-driven runner for the SimCode Python SDK.
+"""An OFFLINE, engine-driven runner for the SimCode Python client.
 
 This is the local-test counterpart to :mod:`simcode._runtime`. Instead of talking
 to GAME over Redis, it drives the **real** Robot City engine compiled to a
@@ -19,7 +19,7 @@ The design mirrors the browser exactly:
   commands.
 
 Only the transport differs; dispatch, the read model, the handles, and the
-command-accumulation path are all the untouched SDK code.
+command-accumulation path are all the untouched client library code.
 """
 
 from __future__ import annotations
@@ -242,7 +242,7 @@ def _import_controller(entry_path: str):
 
 def _dispatch_tick(events: list, mirror: WorldMirror, accumulator: Accumulator,
                    err_counter: list, event_counter: Counter) -> None:
-    """Dispatch every event of one tick through the SDK's real machinery.
+    """Dispatch every event of one tick through the client library's real machinery.
 
     One StateReader + one Accumulator for the whole tick (state does not change
     between events of the same tick); a per-event DispatchContext so the module
@@ -320,7 +320,7 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
         _dispatch_tick(resp.get("events") or [], mirror, accumulator,
                        err_counter, event_counter)
 
-        # Drain the accumulator into intents (the SDK's own path), record command
+        # Drain the accumulator into intents (the client library's own path), record command
         # counts, and hand the envelopes back as next tick's commands.
         intents = accumulator.build_intents(city, primary=None)
         commands = [it.to_envelope() for it in intents]

@@ -89,7 +89,7 @@ the same c-shared library the server runs), loads it via `ctypes`, and drives it
 tick at a time: it feeds the engine your controller's command intents and your active
 event subscriptions, gets back the triggered events + a world delta, mirrors the
 world exactly like the browser does, and dispatches events through the **unchanged**
-vendored `simcode` SDK. So the only thing that differs from production is the
+vendored `simcode` client library. So the only thing that differs from production is the
 transport — the game logic is identical.
 
 Set `SIMCODE_ENGINE_SO=/path/to/libengine-*.so` to run against a local engine build

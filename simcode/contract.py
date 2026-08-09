@@ -1,7 +1,7 @@
 """Wire envelopes, the outbound Intent, and the per-event accumulator.
 
 This sits just above `_wire` (the frozen channel/name mirror). It defines how
-the SDK *encodes* the messages that cross Boundary 2 (GAME <-> CODE):
+the client library *encodes* the messages that cross Boundary 2 (GAME <-> CODE):
 
 - inbound  : an ``event`` envelope -> :class:`Event`
 - outbound : a ``subscribe`` envelope, and one or more ``intent`` envelopes

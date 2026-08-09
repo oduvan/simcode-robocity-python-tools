@@ -22,7 +22,7 @@ The runtime GETs (MGETs) and json-parses these; the reader indexes robots /
 buildings by id and tiles by "x,y". ``world.tick`` comes from ``state.meta.tick``.
 
 Persistence: the city-wide ``store`` is DURABLE — GAME (engine core) persists it
-and the SDK restores it on (re)connect (see ``Runtime.restore_store``), so it
+and the client library restores it on (re)connect (see ``Runtime.restore_store``), so it
 survives a hot-reload / container restart. Per-robot ``memory`` is still
 in-process only (live for the process; reset on hot-reload) — see
 ``_DictWriteProxy``.

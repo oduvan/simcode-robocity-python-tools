@@ -1,6 +1,6 @@
 """Minimal example: place a mine, then haul its output (autonomous mining).
 
-A tiny but correct illustration of the redesigned SDK shape: robots FLY (float
+A tiny but correct illustration of the redesigned client library shape: robots FLY (float
 coordinates), mining is AUTONOMOUS — you place a site with ``world.build(...)``
 and the Mining building digs on its own — and robots only HAUL. The richer
 compounding demo lives in ``metropolis.py``. Run: ``python -m examples.quarry``.

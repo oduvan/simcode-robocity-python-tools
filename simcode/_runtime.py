@@ -40,7 +40,7 @@ _EVENT_FIELD = "data"
 _ERROR_RING = 200
 # Max user frames kept per exception traceback.
 _TB_DEPTH = 10
-# This package's directory — used to trim SDK frames out of a user traceback.
+# This package's directory — used to trim client library frames out of a user traceback.
 _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -67,7 +67,7 @@ class Runtime:
         # by starting at id "0"; flip to ">" (new entries only) once drained.
         self._read_id = "0"
         self._running = False
-        # City-wide ``store`` is durable: GAME persists it and the SDK restores it
+        # City-wide ``store`` is durable: GAME persists it and the client library restores it
         # on connect (see restore_store), so it survives a hot-reload / container
         # restart. Per-robot ``memory`` is still in-process (reset on hot-reload).
         self.store_state: dict = {}
@@ -306,7 +306,7 @@ class Runtime:
 
     def _user_frames(self, tb) -> tuple[str, list]:
         """Extract (where, traceback_lines) from a traceback, trimmed to the USER's
-        frames (drop SDK internals) so `where` points at the actual bug. Paths are
+        frames (drop client library internals) so `where` points at the actual bug. Paths are
         made repo-relative (…/srv/code/<city>/main.py -> main.py)."""
         frames = traceback.extract_tb(tb)
         user = [f for f in frames if not os.path.abspath(f.filename).startswith(_PKG_DIR)]

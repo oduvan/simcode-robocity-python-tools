@@ -2,7 +2,7 @@
 Builder" game.
 
 It no longer re-implements the engine. ``robocity-sim run`` downloads the **real**
-game engine (the exact binary the server runs) via the vendored ``simcode`` SDK and
+game engine (the exact binary the server runs) via the vendored ``simcode`` client library and
 drives your *unchanged* ``main.py`` against it — so a local run is byte-for-byte the
 server's game logic, with no re-implementation to drift.
 """
