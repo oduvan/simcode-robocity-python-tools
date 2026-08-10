@@ -41,6 +41,30 @@ from .contract import Accumulator, Event
 # --------------------------------------------------------------------------- #
 # 1. the c-shared engine over ctypes
 # --------------------------------------------------------------------------- #
+
+def _runs_of(cells) -> list:
+    """Collapse a set of (x, y) cells into per-row inclusive x-runs [y, x0, x1].
+
+    Mirrors the engine's encoding so the offline runner hands the reader exactly the
+    shape the live wire carries.
+    """
+    by_row: dict[int, list[int]] = {}
+    for x, y in cells:
+        by_row.setdefault(y, []).append(x)
+    out = []
+    for y in sorted(by_row):
+        xs = sorted(by_row[y])
+        start = prev = xs[0]
+        for x in xs[1:]:
+            if x == prev + 1:
+                prev = x
+                continue
+            out.append([y, start, prev])
+            start = prev = x
+        out.append([y, start, prev])
+    return out
+
+
 class Engine:
     """Thin ctypes wrapper over ``libengine.so`` (EngineTick / EngineFree).
 
@@ -83,7 +107,8 @@ class WorldMirror:
     """The full world as dicts, updated by applying each ``changes`` delta.
 
     Parity with ``reducer.ts``: robots/buildings merge by id **field-wise** on
-    their nested objects; tiles/discovered accumulate; ``removed`` ids drop out.
+    their nested objects; the map accumulates (discovered RUNS are unioned in,
+    spots are upserted by cell); ``removed`` ids drop out.
     The first delta (full-from-empty) establishes the world; later ones patch it.
     """
 
@@ -94,7 +119,7 @@ class WorldMirror:
         self.seq = -1
         self.robots: dict[str, dict] = {}
         self.buildings: dict[str, dict] = {}
-        self.tiles: dict[str, dict] = {}  # "x,y" -> tile
+        self.spots: dict[tuple[int, int], list] = {}  # (x,y) -> [x,y,resource,remaining]
         self.discovered: set[tuple[int, int]] = set()
         self.stats: dict = {}
         # counters observed over the whole run
@@ -123,13 +148,19 @@ class WorldMirror:
                 continue
             self.buildings[bid] = _merge_building(self.buildings.get(bid), patch)
 
-        for t in delta.get("tiles") or []:
-            if "x" in t and "y" in t:
-                self.tiles[f'{t["x"]},{t["y"]}'] = t
-                self.discovered.add((t["x"], t["y"]))
+        # Spots are UPSERTS keyed by cell (a deposit's `remaining` falls as it is
+        # mined; 0 means depleted, not gone).
+        for sp in delta.get("spots") or []:
+            if isinstance(sp, (list, tuple)) and len(sp) == 4:
+                self.spots[(int(sp[0]), int(sp[1]))] = list(sp)
 
-        for xy in delta.get("discovered") or []:
-            self.discovered.add((xy[0], xy[1]))
+        # Discovered arrives as runs to ADD — deltas are incremental, so this is a
+        # union, never a replacement.
+        for run in delta.get("discovered") or []:
+            if isinstance(run, (list, tuple)) and len(run) == 3:
+                y, x0, x1 = int(run[0]), int(run[1]), int(run[2])
+                for x in range(x0, x1 + 1):
+                    self.discovered.add((x, y))
 
         removed = delta.get("removed") or {}
         for rid in removed.get("robots") or []:
@@ -159,8 +190,8 @@ class WorldMirror:
             world={"seed": self.seed, "size": size, "origin": origin, "endless": True},
             robots=list(self.robots.values()),
             buildings=list(self.buildings.values()),
-            tiles=list(self.tiles.values()),
-            discovered=[list(c) for c in self.discovered],
+            spots=[v for _, v in sorted(self.spots.items())],
+            discovered=_runs_of(self.discovered),
             store_state=self._store,
             memory_state=self._memory,
             accumulator=accumulator,

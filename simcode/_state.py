@@ -14,9 +14,13 @@ State store layout (Redis) — each key is a plain JSON **string** (not a hash):
                                "inventory":{"items":{item:qty},"capacity"},"state","command"}
     city.<id>.state.buildings  JSON ARRAY of {"id","type","pos","status","storage",
                                + mining:"spot", base:"production", constructing:"construction"}
-    city.<id>.state.tiles      JSON ARRAY of {"x","y","terrain","spot"|null}
+    city.<id>.state.spots      JSON ARRAY of [x, y, resource, remaining] — SPARSE:
+                               only cells carrying a deposit (remaining 0 = depleted)
     city.<id>.state.stats      JSON object (not needed to drive)
-    city.<id>.state.discovered base64 string (exposed raw; not needed to drive)
+    city.<id>.state.discovered JSON ARRAY of [y, x0, x1] — per-row INCLUSIVE runs of
+                               revealed cells. Runs, not one entry per cell: a map is
+                               overwhelmingly contiguous, so this stays small as the
+                               city explores.
 
 The runtime GETs (MGETs) and json-parses these; the reader indexes robots /
 buildings by id and tiles by "x,y". ``world.tick`` comes from ``state.meta.tick``.
@@ -738,11 +742,38 @@ def _manhattan(a, b) -> int:
 # --------------------------------------------------------------------------- #
 # the reader
 # --------------------------------------------------------------------------- #
+TERRAIN_GROUND = "ground"
+
+
+def _expand_map(discovered, spots) -> dict:
+    """Rebuild the per-cell tile dict from discovered runs + the sparse spot list.
+
+    ``discovered`` is [[y, x0, x1], ...] with x0/x1 INCLUSIVE; ``spots`` is
+    [[x, y, resource, remaining], ...]. A cell with no deposit gets ``spot: None``,
+    matching what the per-cell wire form used to send explicitly.
+    """
+    by_cell = {}
+    for sp in spots or []:
+        if isinstance(sp, (list, tuple)) and len(sp) == 4:
+            by_cell[(int(sp[0]), int(sp[1]))] = {"resource": sp[2], "remaining": int(sp[3])}
+    tiles = {}
+    for run in discovered or []:
+        if not (isinstance(run, (list, tuple)) and len(run) == 3):
+            continue
+        y, x0, x1 = int(run[0]), int(run[1]), int(run[2])
+        for x in range(x0, x1 + 1):
+            tiles[f"{x},{y}"] = {
+                "x": x, "y": y, "terrain": TERRAIN_GROUND,
+                "spot": by_cell.get((x, y)),
+            }
+    return tiles
+
+
 class StateReader:
     """A one-shot snapshot of ``city.<id>.state.*`` for a single dispatch.
 
     Built from the parsed JSON strings the engine writes: ``meta``/``world`` are
-    objects; ``robots``/``buildings``/``tiles`` are arrays, indexed here by id
+    objects; ``robots``/``buildings``/``spots`` are arrays, indexed here by id
     and "x,y". ``store_state`` is the runtime's live store dict (durable —
     restored on connect); ``memory_state`` is in-process only (see module
     docstring).
@@ -755,7 +786,7 @@ class StateReader:
         world: dict,
         robots: list,
         buildings: list,
-        tiles: list,
+        spots: list,
         discovered=None,
         store_state: dict,
         memory_state: dict,
@@ -765,8 +796,13 @@ class StateReader:
         self.world_raw = world or {}
         self.robots_raw = {r["id"]: r for r in (robots or []) if "id" in r}
         self.buildings_raw = {b["id"]: b for b in (buildings or []) if "id" in b}
-        self.tiles_raw = {f'{t["x"]},{t["y"]}': t for t in (tiles or []) if "x" in t and "y" in t}
         self.discovered_raw = discovered
+        # The wire no longer carries a record per cell — it carries runs of revealed
+        # cells plus a sparse deposit list. Expand them back into the per-cell dict the
+        # handles read, so `r.here`, `world.cells()` and `nearest()` are unchanged.
+        # Terrain is a module constant and is supplied here rather than sent 5,000
+        # times per frame.
+        self.tiles_raw = _expand_map(discovered, spots)
         self.store_state = store_state
         self.memory_state = memory_state
         self.accumulator = accumulator

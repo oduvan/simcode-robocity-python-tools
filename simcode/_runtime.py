@@ -28,7 +28,7 @@ from ._state import StateReader
 from .contract import Accumulator, Event, build_subscribe, decode, encode
 
 # State sub-keys — each a plain JSON string the engine writes (see _state.py).
-_STATE_KEYS = ("meta", "world", "robots", "buildings", "tiles", "discovered")
+_STATE_KEYS = ("meta", "world", "robots", "buildings", "spots", "discovered")
 
 # Durable event stream: consumer group + this container's consumer name. The
 # group persists across restarts, so delivered-but-unacked entries from a prior
@@ -194,8 +194,10 @@ class Runtime:
             world=parse("world", {}),
             robots=parse("robots", []),
             buildings=parse("buildings", []),
-            tiles=parse("tiles", []),
-            discovered=raw.get("discovered"),
+            spots=parse("spots", []),
+            # Parsed, not raw: `discovered` is a real document now ([[y,x0,x1],...]),
+            # where it used to be an opaque blob passed straight through.
+            discovered=parse("discovered", []),
             store_state=self.store_state,
             memory_state=self.memory_state,
             accumulator=accumulator,
