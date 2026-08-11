@@ -533,15 +533,37 @@ class BuildingHandle:
     @property
     def unlocks(self):
         """Base only (#42): the building + robot types buildable at the Base's
-        current level (the unlock ladder). ``None`` on non-Base buildings."""
+        current level. ``None`` on non-Base buildings.
+
+        Which level grants what is generated per world (#64), so check this rather
+        than assuming a fixed ladder — a type that unlocked at level 3 in one city
+        may arrive later or earlier in another."""
         return self._d.get("unlocks")
 
     @property
     def quest(self) -> Optional[_Attr]:
-        """Base only: the current quest — ``.required`` and ``.progress`` are each
-        ``{ore, metal}`` (progress = min(stored, required)). None on non-Base
-        buildings. Deliver the required raw resources to the Base to level up."""
+        """Base only: the current level's requirement — ``.required`` and
+        ``.progress`` are each item maps (progress = min(delivered, required)).
+        ``None`` on non-Base buildings. Deliver the required items to the Base to
+        level up.
+
+        The ladder is ENDLESS and generated from your world's seed (#64), so do not
+        hardcode what a level wants: read ``.required`` and react. Two cities with
+        different seeds ask for different things, and the same seed always asks the
+        same."""
         q = self._d.get("quest")
+        return _Attr(q) if q else None
+
+    @property
+    def next_quest(self) -> Optional[_Attr]:
+        """Base only: a PREVIEW of the next level — ``.level``, ``.required`` and
+        ``.unlocks`` — or ``None`` while it is still hidden.
+
+        The ladder is meant to be a discovery, so the next rung is not published
+        until you are close to finishing the current one. ``None`` therefore means
+        "not revealed yet", NOT "there is nothing above" — the ladder never ends.
+        Use it to start stockpiling before you level."""
+        q = self._d.get("next_quest")
         return _Attr(q) if q else None
 
     # ----- Flying Station commands -----
