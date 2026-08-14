@@ -32,11 +32,20 @@ under `~/.cache/simcode/`.
 
 ```bash
 # Run against the real engine. Inside your city repo it auto-detects which city
-# this is and borrows that city's map seed (public, no token needed):
+# this is and uses that city's world — seed AND per-city config (public, no token):
 robocity-sim run main.py
 
 # Shorter horizon, machine-readable output (for tooling / an AI reading the result):
 robocity-sim run main.py --ticks 200 --json
+
+# Run against your city exactly as it is right now (the situation a push creates):
+robocity-sim run main.py --from-live
+
+# No city yet? Ask for the canonical map explicitly:
+robocity-sim run main.py --canonical
+
+# Would a deploy accept this code? (no simulation)
+robocity-sim check main.py
 ```
 
 Options:
@@ -44,24 +53,53 @@ Options:
 | Flag | Meaning |
 | --- | --- |
 | `--ticks N` | how many ticks to simulate (default 500) |
-| `--seed S` | world seed (default: your city's seed, else the canonical map, 7) |
+| `--seed S` | run this exact world seed instead of your city's |
+| `--canonical` | run the module's canonical map instead of your city's world |
+| `--from-live` | start from your city AS IT IS NOW (saved world + saved store) |
 | `--module M` | game module whose engine to run (default `robot-city`) |
-| `--city SLUG` | borrow the seed from this city (default: auto-detected from the git remote) |
-| `--server URL` | server base URL for engine download + seed lookup (default: `$SIMCODE_SERVER`, else the public server) |
+| `--city SLUG` | run this city's world (default: auto-detected from the git remote) |
+| `--skip-code-check` | don't ask the server whether a deploy would accept this code |
+| `--server URL` | server base URL for engine download + world lookup (default: `$SIMCODE_SERVER`, else the public server) |
 | `--json` | emit the summary as JSON instead of the readable block |
+
+**It can start from your city as it is now.** `--from-live` runs your controller forward
+from the city's current state — its saved world (buildings, fleet, stored materials, level
+and every robot's in-flight command) plus its **saved store**, continuing the city's own
+tick numbering. That is the situation a real deploy creates. A cold start stays the
+default because it is reproducible and works before you have a city. If the live state
+cannot be obtained the run stops; a city that has never checkpointed is a refusal, not an
+empty world. A resumed run also states two limits plainly: the save records no engine
+version, so that check is *not possible*, and the read model is seeded from the city's
+display snapshot, which can be a few ticks newer than the restored save.
+
+**It never runs a world you did not ask for.** If your city's world cannot be obtained
+(server unreachable, no linked city), the run stops with exit code `6` and says so — it
+does not fall back to another map. Every run prints which world it used, in the banner
+and again in the summary; `--json` carries a `world` block.
+
+**It accepts exactly what a deploy accepts.** Before simulating, `run` asks the server
+whether a real push would accept this repo, using the same rule the server runs on push.
+Exit `4` = would be rejected, `5` = the rule could not be consulted, `6` = the world
+could not be obtained.
 
 `main.py` is used **unchanged**: it does `from simcode import on, robots, world,
 buildings`, registers `@on.idle` etc., and the tool imports it and drives the tick
 loop against the engine for you.
 
-The run ends with a **SUMMARY**: ticks run, robots alive/destroyed, buildings by
-type, Base level, handler errors, how much of the map was revealed, and the commands
-and events seen. It exits non-zero if any of your handlers raised — so CI or an AI
-loop notices a broken controller.
+The run ends with a **SUMMARY**: the world it ran, ticks run, robots alive, robots
+**expired**, robots **destroyed**, buildings by type, Base level, handler errors, how
+much of the map was revealed, and the commands and events seen. It exits non-zero if
+any of your handlers raised — so CI or an AI loop notices a broken controller.
+
+**Expired is not destroyed.** `robots expired` = flew past its lifespan: normal,
+inevitable end of life, build replacements. `robots destroyed` = battery hit 0
+mid-flight: avoidable, and a bug in your code. Only the second one is a problem, and
+the PASS line keys on it alone.
 
 ### What "good" looks like
 - `robots destroyed` should be **0** — a non-zero count means a robot ran its battery
-  dry mid-flight (recharge earlier / fly shorter hops).
+  dry mid-flight (recharge earlier / fly shorter hops). `robots expired` may be any
+  number; it is expected on a long run.
 - Buildings growing (mining, storage, flying_station, station-produced robots) and the
   Base level climbing means the city is actually developing, not just exploring. The
   shipped starter only explores, so a fresh run shows `buildings: base=1, storage=1`

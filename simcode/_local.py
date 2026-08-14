@@ -122,8 +122,16 @@ class WorldMirror:
         self.spots: dict[tuple[int, int], list] = {}  # (x,y) -> [x,y,resource,remaining]
         self.discovered: set[tuple[int, int]] = set()
         self.stats: dict = {}
-        # counters observed over the whole run
+        # Robots that LEFT the world over the run. A removal alone does not say
+        # WHY, and the two reasons are opposites (#73 / forum post 23):
+        #   expired   — flew past its lifespan. Inevitable, expected, replace it.
+        #   destroyed — battery hit 0 mid-flight. Avoidable; the controller is wrong.
+        # The reason only rides on the EVENT, so run_local counts those two and
+        # tells us here; `removed` is the raw removal count, used to notice any
+        # removal we could not attribute rather than silently mislabelling it.
+        self.expired = 0
         self.destroyed = 0
+        self.removed = 0
         # durable-ish state surviving across ticks within one local run:
         # the StoreProxy backing dict and per-robot r.memory backing dicts.
         self._store: dict = {}
@@ -165,10 +173,10 @@ class WorldMirror:
         removed = delta.get("removed") or {}
         for rid in removed.get("robots") or []:
             if self.robots.pop(rid, None) is not None:
-                # In this module a robot only ever leaves the world by being
-                # destroyed (out of energy mid-flight), so a removed robot id is a
-                # faithful destroyed-count signal, independent of subscriptions.
-                self.destroyed += 1
+                # Count the departure; the REASON comes from the event stream
+                # (see the counter note in __init__) — a removal on its own
+                # cannot tell end-of-life from an energy death.
+                self.removed += 1
         for bid in removed.get("buildings") or []:
             self.buildings.pop(bid, None)
 
@@ -271,19 +279,37 @@ def _import_controller(entry_path: str):
     return mod
 
 
+# Robot end-of-life events. The runner always asks the engine for these two (even
+# when the controller subscribes to neither) so the summary can report end-of-life
+# and energy-death as SEPARATE figures — see the counter note on WorldMirror.
+EVENT_ROBOT_EXPIRED = "robot_expired"
+EVENT_ROBOT_DESTROYED = "robot_destroyed"
+LIFECYCLE_EVENTS = (EVENT_ROBOT_EXPIRED, EVENT_ROBOT_DESTROYED)
+
+
 def _dispatch_tick(events: list, mirror: WorldMirror, accumulator: Accumulator,
-                   err_counter: list, event_counter: Counter) -> None:
+                   err_counter: list, event_counter: Counter,
+                   subscribed: set | None = None) -> None:
     """Dispatch every event of one tick through the client library's real machinery.
 
     One StateReader + one Accumulator for the whole tick (state does not change
     between events of the same tick); a per-event DispatchContext so the module
     proxies (``robots``/``world``/``store``) and ``e`` resolve, and handler errors
     are caught the same way the live ``Runtime.dispatch`` catches them.
+
+    ``subscribed`` is what the CONTROLLER asked for. The runner may ask the engine
+    for more than that (the lifecycle events above), so "events seen" still counts
+    only what the controller subscribed to — the extra ones are bookkeeping.
     """
     state = mirror.reader(accumulator)
     for env in events:
         ev = Event(env)
-        event_counter[ev.event] += 1
+        if ev.event == EVENT_ROBOT_EXPIRED:
+            mirror.expired += 1
+        elif ev.event == EVENT_ROBOT_DESTROYED:
+            mirror.destroyed += 1
+        if subscribed is None or ev.event in subscribed:
+            event_counter[ev.event] += 1
         subs = registry.handlers_for(ev.event)
         if not subs:
             continue
@@ -306,26 +332,60 @@ def _dispatch_tick(events: list, mirror: WorldMirror, accumulator: Accumulator,
             reset_context(token)
 
 
-def _engine_config(city: str, seed: int, city_config: dict | None) -> dict:
+def _engine_config(city: str, seed: int, city_config: dict | None,
+                   module_type: str | None = None) -> dict:
     """The engine request's `config` block. `config` here is the per-city options
     blob, NOT the module's tuning table (`module`) — two different documents that
     both used to be called "config"; see docs/glossary.md."""
     cfg: dict = {"city": city, "seed": seed}
     if city_config:
         cfg["config"] = city_config
+    if module_type:
+        cfg["type"] = module_type
     return cfg
 
 
 def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
               so_path: str | None = None, city: str = "local",
               reset_registry: bool = True, module: str = "robot-city",
-              city_config: dict | None = None) -> dict:
+              city_config: dict | None = None,
+              world_source: dict | None = None,
+              module_type: str | None = None,
+              map_state: dict | None = None,
+              initial_store: dict | None = None,
+              prime_state: dict | None = None) -> dict:
     """Run a user controller against the real engine for ``ticks`` ticks.
 
     Imports ``entry_path`` (registering its handlers), then runs the event ->
     intent loop entirely offline. Returns a summary dict. ``module`` selects which
     game module's engine to download when ``so_path`` is None (Elite users pass
     ``module="elite"``).
+
+    ``world_source`` describes WHERE the world came from (which city, which
+    server, or an explicit seed). It is copied into the summary's ``world`` block
+    so every run — including ``--json`` — states the world it used and a
+    substitution cannot pass unnoticed (#73 / forum post 22).
+
+    RESUMING A RUNNING CITY (#73 req 1). Pass all three together:
+
+    * ``map_state``   — the city's saved world envelope ``{tick, seq, world}`` from
+      ``GET /api/city/<slug>/save``, handed to the engine as its map state. The
+      engine restores it and continues at ``tick + 1``, so robots keep their
+      in-flight commands, targets and cargo — the situation every deploy creates.
+    * ``initial_store`` — the city's saved store, which lives OUTSIDE the world.
+      Resuming the world without it gives a city that looks right and behaves
+      wrong: a controller keeping a claim registry or a version stamp there would
+      start blank and re-do work the real city has already done.
+    * ``prime_state`` — the city's display snapshot, used to seed the READ MODEL.
+      This is needed because the engine's delta after a restore is INCREMENTAL
+      (it primes its own baseline from the restored world and then reports only
+      that tick's changes), so without priming the handlers would see a nearly
+      empty world while the engine held the full one. The snapshot is the same
+      display projection a live controller reads from ``state.*``, so this is the
+      production arrangement — but it is read at the CITY'S CURRENT tick, which
+      runs ahead of the last checkpoint, so it can be slightly newer than the
+      restored world. The caller is expected to report that skew; see
+      ``robocity_sim.cli``.
     """
     if so_path is None:
         so_path = _default_so_path(module)
@@ -341,15 +401,35 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
     event_counter: Counter = Counter()
     cmd_counter: Counter = Counter()
 
-    engine_map = None          # opaque new_map envelope; None on the first call
+    # Resuming: the saved world envelope IS the engine's map state, so the very
+    # first call restores instead of generating. None ⇒ a fresh tick-0 world.
+    engine_map = map_state
     commands: list = []        # intent envelopes to submit next tick
-    discovered_start = None
+
+    # Saved values survive a deploy; in-memory values do not. Seed the store and
+    # leave `memory` empty — that is exactly what a real push produces.
+    if initial_store:
+        mirror._store.update(initial_store)
+
+    # Prime the read model. Only meaningful when resuming (see the docstring):
+    # a restored engine reports incremental deltas, so the handlers would
+    # otherwise read a nearly empty world on the first ticks.
+    if prime_state:
+        mirror.apply(prime_state)
+
+    start_tick = int((map_state or {}).get("tick", 0) or 0)
+    resumed = map_state is not None
+    discovered_start = len(mirror.discovered) if prime_state else None
 
     for _ in range(ticks):
         subs = registry.events  # picks up runtime subscribe()/@on changes
+        subscribed = set(subs)
+        # Ask for the two end-of-life events even when the controller ignores
+        # them, so the summary can separate "aged out" from "flown flat".
+        ask = sorted(subscribed.union(LIFECYCLE_EVENTS))
         resp = engine.tick({
-            "config": _engine_config(city, seed, city_config),
-            "subscriptions": subs,
+            "config": _engine_config(city, seed, city_config, module_type),
+            "subscriptions": ask,
             "map": engine_map,
             "commands": commands,
         })
@@ -360,7 +440,7 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
 
         accumulator = Accumulator()
         _dispatch_tick(resp.get("events") or [], mirror, accumulator,
-                       err_counter, event_counter)
+                       err_counter, event_counter, subscribed)
 
         # Drain the accumulator into intents (the client library's own path), record command
         # counts, and hand the envelopes back as next tick's commands.
@@ -386,11 +466,47 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
             base_quest = b.get("quest")
             break
 
+    # Every removal should be attributable to one of the two lifecycle events.
+    # If one is not, say so rather than folding it into either figure.
+    unattributed = max(0, mirror.removed - mirror.expired - mirror.destroyed)
+
+    # On a resumed run the read model was PRIMED from the city's display state,
+    # which is read at the city's current tick and so can be newer than the
+    # checkpoint the engine restored. The engine's own `stats` are authoritative,
+    # so compare them against what the handlers can see and report any gap rather
+    # than letting it pass as fact.
+    drift = None
+    if resumed and mirror.stats:
+        eng_r, eng_b = mirror.stats.get("robots"), mirror.stats.get("buildings")
+        seen_r, seen_b = len(mirror.robots), len(mirror.buildings)
+        if (isinstance(eng_r, int) and eng_r != seen_r) or \
+           (isinstance(eng_b, int) and eng_b != seen_b):
+            drift = {"engine_robots": eng_r, "read_model_robots": seen_r,
+                     "engine_buildings": eng_b, "read_model_buildings": seen_b}
+
+    world = dict(world_source or {})
+    world.setdefault("seed", seed)
+    world.setdefault("module", module)
+    world.setdefault("city", city)
+    if city_config:
+        world.setdefault("config", city_config)
+    world.setdefault("start", f"resumed at tick {start_tick + 1}" if resumed
+                     else "fresh world at tick 0")
+    world["resumed"] = resumed
+    world["start_tick"] = start_tick
+
     return {
+        "world": world,
         "ticks": ticks,
+        "resumed": resumed,
+        "start_tick": start_tick,
+        "first_tick": start_tick + 1 if resumed else 0,
+        "read_model_drift": drift,
         "tick": mirror.tick,
         "robots_alive": len(mirror.robots),
+        "robots_expired": mirror.expired,
         "robots_destroyed": mirror.destroyed,
+        "robots_removed_unattributed": unattributed,
         "buildings": dict(buildings_by_type),
         "base_level": base_level,
         "base_quest": base_quest,
@@ -406,19 +522,58 @@ def run_local(entry_path: str, seed: int = 7, ticks: int = 200,
 # --------------------------------------------------------------------------- #
 # 4. the CLI  (``python -m simcode.local main.py`` / ``simcode-local``)
 # --------------------------------------------------------------------------- #
+def describe_world(world: dict | None) -> str:
+    """One line naming the world a run used and where it came from (#73).
+
+    Printed in the banner AND repeated in the summary, next to the PASS/FAIL line,
+    so a run against the wrong world cannot look like a normal run.
+    """
+    w = world or {}
+    origin = w.get("origin") or "unspecified"
+    seed = w.get("seed")
+    parts = [f"seed {seed}" if seed is not None else "seed ?", origin]
+    if w.get("config"):
+        parts.append("config: " + ", ".join(sorted(w["config"])))
+    if w.get("start"):
+        parts.append(str(w["start"]))
+    if w.get("store_keys"):
+        parts.append(f"store: {w['store_keys']} key(s) restored")
+    return " | ".join(parts)
+
+
 def _format_summary(s: dict) -> str:
     """Render a :func:`run_local` summary as a readable, PASS/FAIL block."""
     def _counts(d: dict) -> str:
         return ", ".join(f"{k}={v}" for k, v in sorted(d.items())) or "—"
 
     errors = s.get("handler_errors", 0)
+    # #73 / forum post 23: end-of-life is NOT failure. `expired` = flew past its
+    # lifespan (inevitable — build replacements). `destroyed` = battery hit 0
+    # mid-flight (avoidable — the controller mis-budgeted energy). Only the second
+    # one means something is wrong, so they are reported as separate figures with
+    # different wording, and the PASS line keys on `destroyed` alone.
+    expired = s.get("robots_expired", 0)
     destroyed = s.get("robots_destroyed", 0)
+    unattributed = s.get("robots_removed_unattributed", 0)
     ok = errors == 0
+    # A resumed run continues the CITY'S tick numbering, so "5999 / 6000" would be
+    # a lie there — show the real range it covered instead (#73 req 1).
+    if s.get("resumed"):
+        ticks_line = (f"{s.get('first_tick', 0)} -> {s.get('tick', 0)} "
+                      f"({s.get('ticks', 0)} ticks, continuing the city's own numbering)")
+    else:
+        ticks_line = f"{s.get('tick', 0)} / {s.get('ticks', 0)}"
     lines = [
         "LOCAL-RUN SUMMARY",
-        f"  ticks run        : {s.get('tick', 0)} / {s.get('ticks', 0)}",
+        f"  world            : {describe_world(s.get('world'))}",
+        f"  ticks run        : {ticks_line}",
         f"  robots alive     : {s.get('robots_alive', 0)}",
-        f"  robots destroyed : {destroyed}",
+        f"  robots expired   : {expired}   (end of life — expected; build replacements)",
+        f"  robots destroyed : {destroyed}   (out of energy mid-flight — avoidable; check your charging)",
+    ]
+    if unattributed:
+        lines.append(f"  robots lost (unattributed) : {unattributed}")
+    lines += [
         f"  buildings        : {_counts(s.get('buildings') or {})}",
         f"  base level       : {s.get('base_level')}",
         f"  handler errors   : {errors}",
@@ -426,10 +581,24 @@ def _format_summary(s: dict) -> str:
         f"  commands issued  : {_counts(s.get('commands') or {})}",
         f"  events seen      : {_counts(s.get('events') or {})}",
     ]
-    if ok:
-        lines.append(f"LOCAL-CHECK: PASS — 0 handler errors ({destroyed} robots destroyed)")
+    drift = s.get("read_model_drift")
+    if drift:
+        lines.append(
+            f"  read model drift : your handlers saw {drift['read_model_robots']} robots / "
+            f"{drift['read_model_buildings']} buildings; the engine holds "
+            f"{drift['engine_robots']} / {drift['engine_buildings']} "
+            f"(the seeded display state was newer than the restored save)")
+    if ok and not destroyed:
+        lines.append(
+            f"LOCAL-CHECK: PASS — 0 handler errors, 0 robots destroyed "
+            f"({expired} expired at end of life, which is normal)")
+    elif ok:
+        lines.append(
+            f"LOCAL-CHECK: PASS — 0 handler errors, but {destroyed} robot(s) ran out of "
+            f"energy mid-flight (cargo lost); {expired} expired at end of life, which is normal")
     else:
         lines.append(f"LOCAL-CHECK: FAIL — {errors} handler error(s); scroll up for tracebacks")
+    lines.append(f"LOCAL-CHECK: world — {describe_world(s.get('world'))}")
     return "\n".join(lines)
 
 
@@ -469,7 +638,8 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         summary = run_local(args.entry, seed=args.seed, ticks=args.ticks,
-                            module=args.module)
+                            module=args.module,
+                            world_source={"origin": f"explicit --seed {args.seed}"})
     except Exception as e:  # engine download/build failure, import error, …
         sys.stderr.write(f"local run could not start: {e}\n")
         return 2
