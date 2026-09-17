@@ -89,8 +89,20 @@ def _resume_caveats(world: dict) -> list:
     ver = world.get("engine_version") or ""
     server_ver = world.get("server_engine_version") or "unknown"
     if src == "save" and ver:
-        out.append(f" engine check: save was produced by engine {ver}; "
-                   f"the server publishes {server_ver}")
+        # Saves record the build that wrote them (forum #31), so this is now a real
+        # check rather than two version strings printed side by side. Say the
+        # VERDICT: a mismatch is the case that silently zeroes part of the world.
+        if server_ver != "unknown" and ver == server_ver:
+            out.append(f" engine check: OK — this save was produced by engine {ver}, "
+                       "the same build you are running.")
+        elif server_ver != "unknown":
+            out.append(f" engine check: MISMATCH — this save was produced by engine {ver}, "
+                       f"but you are running {server_ver}.")
+            out.append("               A mismatched engine restores a partly-zeroed world "
+                       "WITHOUT any error. Re-download the engine, or run --canonical.")
+        else:
+            out.append(f" engine check: save was produced by engine {ver}; "
+                       "this server publishes no engine version to compare with.")
     else:
         out.append(" engine check: NOT POSSIBLE — this save records no engine version, so I")
         out.append("               cannot verify it matches the engine you are running "
@@ -350,6 +362,15 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _discovered_cells(runs) -> int:
+    """Cells covered by the RLE runs [[y, x0, x1], ...] — x0/x1 INCLUSIVE."""
+    total = 0
+    for run in runs or []:
+        if len(run) >= 3:
+            total += run[2] - run[1] + 1
+    return total
+
+
 def _status_from_snapshot(city: str, snap: dict) -> dict:
     by_type: dict = {}
     for b in snap.get("buildings", []):
@@ -361,7 +382,10 @@ def _status_from_snapshot(city: str, snap: dict) -> dict:
         "robots": len(snap.get("robots", [])),
         "buildings": len(snap.get("buildings", [])),
         "buildings_by_type": by_type,
-        "discovered_cells": len(snap.get("discovered", [])),
+        # `discovered` is RLE: [[y, x0, x1], ...] with x0/x1 INCLUSIVE. len() is the
+        # number of RUNS, which is not what the field is called and is wildly lower
+        # than the truth — one city read 40 when it had discovered 1198 (forum #30).
+        "discovered_cells": _discovered_cells(snap.get("discovered", [])),
         "stats": snap.get("stats"),
     }
     # Health SIGNAL: unhandled exceptions since your last release. A raise leaves a
