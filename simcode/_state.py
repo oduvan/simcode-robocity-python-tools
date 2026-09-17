@@ -173,6 +173,31 @@ class _DictWriteProxy:
         self._d[key] = value
         self._on_set(key, value)
 
+    def __delitem__(self, key):
+        # `del store[k]` / `pop` / `clear` reach GAME as a JSON null for that key,
+        # which mergeStore has always read as DELETE (engine.go). The wire could
+        # express a deletion long before this proxy could: until forum #34 there
+        # was simply no way to ask for one from Python.
+        del self._d[key]
+        self._on_set(key, None)
+
+    def pop(self, key, *default):
+        if key not in self._d:
+            if default:
+                return default[0]
+            raise KeyError(key)
+        value = self._d[key]
+        del self[key]
+        return value
+
+    def clear(self) -> None:
+        for key in list(self._d):
+            del self[key]
+
+    def update(self, other=None, **kw) -> None:
+        for k, v in dict(other or {}, **kw).items():
+            self[k] = v
+
     def get(self, key, default=None):
         return self._d.get(key, default)
 
@@ -833,6 +858,10 @@ class StateReader:
         self.buildings = BuildingRegistry(self)
         self.world = World(self)
         self.store = StoreProxy(store_state, accumulator.set_store)
+        # Fingerprint the store as this event found it, so a write made THROUGH a
+        # nested value — `store["jobs"][rid] = …`, which never reaches set_store —
+        # is still sent. See Accumulator.watch_store (forum #34).
+        accumulator.watch_store(store_state)
 
     # ----- spatial lookups (robot positions are floats → round to a cell) -----
     @staticmethod

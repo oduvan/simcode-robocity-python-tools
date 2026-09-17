@@ -11,7 +11,7 @@ module from its distribution endpoint (#29):
 
 The library is cached at ``~/.cache/simcode/engine-<module>-<version>-<platform>.so``
 and re-used on later runs (skip re-download when the cached module+version matches).
-The server base URL is ``$SIMCODE_SERVER`` (default ``https://simgit.io``).
+The server base URL is ``$SIMCODE_SERVER`` (default ``https://robocity.simgit.io``).
 
 The engine is **glibc**-linked, so it can only be dlopen'd by a glibc Python
 (``python:*-slim``); musl/alpine cannot load it. This module doesn't enforce that
@@ -27,7 +27,13 @@ import platform
 import urllib.error
 import urllib.request
 
-DEFAULT_SERVER = "https://simgit.io"
+# THE GAME's host, not the hub. `simgit.io` is the hub: it serves sign-in and the
+# landing page, and answers every /api/* path with the SPA's index.html at HTTP
+# 200 — so a tool pointed there does not get an error, it gets HTML and dies
+# trying to parse it as JSON ("Expecting value: line 1 column 1"). That default
+# made `robocity-sim run` and `inspect` fail out of the box for anyone who had
+# not set SIMCODE_SERVER, and was reported three times (forum #26, #27, #28).
+DEFAULT_SERVER = "https://robocity.simgit.io"
 
 
 class EngineDownloadError(RuntimeError):

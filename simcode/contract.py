@@ -62,7 +62,19 @@ class Event:
         payload = object.__getattribute__(self, "payload")
         if name in payload:
             return payload[name]
-        raise AttributeError(name)
+        # Private/dunder lookups must still raise so Python's own attribute
+        # protocols (copy, pickle, repr/IPython helpers, …) behave normally.
+        if name.startswith("_"):
+            raise AttributeError(name)
+        # A missing *public* payload field reads as None instead of raising —
+        # the same rule `_Attr` uses in the read model, and for the same reason
+        # (forum #29). Payload fields are `omitempty` on the wire, so a field the
+        # docs list is routinely absent: `blocked` carries no `reason` for some
+        # blocks, `robot_destroyed` none for others. Raising here took out the
+        # WHOLE handler, and a raised handler leaves the robot uncommanded — so
+        # one absent key read as a frozen city rather than as a bug on one line.
+        # `e.get(name, default)` still exists for callers who want a default.
+        return None
 
     def get(self, key: str, default: Any = None) -> Any:
         if key in self.payload:
@@ -127,6 +139,19 @@ class Intent:
         return env
 
 
+def _fingerprint(value: Any) -> str:
+    """A stable string for a store value, for spotting in-place mutation.
+
+    `default=repr` so an exotic value can never make taking the fingerprint
+    raise — a value that cannot be encoded will fail later, where it already
+    did, rather than here where nothing failed before.
+    """
+    try:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), default=repr)
+    except Exception:  # pragma: no cover - belt and braces; see the docstring
+        return repr(value)
+
+
 def make_command(cmd: str, *args: Any) -> dict:
     """Build a single command dict ``{cmd, args}``.
 
@@ -149,6 +174,10 @@ class Accumulator:
         self.logs: dict[str, list] = {}
         self.memory: dict[str, dict] = {}
         self.store_writes: dict = {}
+        # The live city store, plus how each top-level value looked when this
+        # event started. See `watch_store` / `_store_payload` (forum #34).
+        self._store_live: dict | None = None
+        self._store_before: dict[str, str] = {}
 
     def add_command(self, target: str, command: dict) -> None:
         self.commands.setdefault(target, []).append(command)
@@ -162,8 +191,43 @@ class Accumulator:
     def set_store(self, key: str, value: Any) -> None:
         self.store_writes[key] = value
 
+    # ----------------------------------------------------------------- #
+    # nested store writes (forum #34)
+    #
+    # GAME merges the store by TOP-LEVEL key, so only `store[k] = v` was ever
+    # recorded. But `store["jobs"][rid] = {...}` is the obvious way to write it,
+    # and it mutated the backing dict in place: it read back correctly for the
+    # rest of the handler and looked right in testing, then vanished on reload.
+    # Silent data loss is the worst failure this library had.
+    #
+    # So the whole store is fingerprinted when the event starts and compared when
+    # the intents are built. Any top-level key whose value CHANGED — however deep
+    # the mutation, through dicts, lists, anything — is sent whole. This is exact
+    # in both directions: a key that was only read is not sent (mergeStore marks
+    # every written key changed, so over-sending would put it in every delta),
+    # and no depth of mutation escapes it. The store is small (~2 KB) and this is
+    # one dump per event, so the cost does not signify.
+    # ----------------------------------------------------------------- #
+    def watch_store(self, live: dict) -> None:
+        """Fingerprint the store as the event found it."""
+        self._store_live = live
+        self._store_before = {k: _fingerprint(v) for k, v in live.items()}
+
+    def _store_payload(self) -> dict:
+        """Explicit writes, plus any key mutated in place under our feet."""
+        out = dict(self.store_writes)
+        if self._store_live is None:
+            return out
+        for k, v in self._store_live.items():
+            if k in out:
+                continue  # an explicit write already carries the new value
+            if self._store_before.get(k) != _fingerprint(v):
+                out[k] = v
+        return out
+
     def is_empty(self) -> bool:
-        return not (self.commands or self.logs or self.memory or self.store_writes)
+        return not (self.commands or self.logs or self.memory or self._store_payload())
+
 
     def build_intents(self, city: str, primary: str | None) -> list[Intent]:
         targets = set(self.commands) | set(self.logs) | set(self.memory)
@@ -173,6 +237,8 @@ class Accumulator:
         if primary is not None and primary in targets:
             ordered.append(primary)
         ordered.extend(t for t in sorted(targets) if t != primary)
+
+        store_payload = self._store_payload()
 
         intents: list[Intent] = []
         store_emitted = False
@@ -184,14 +250,14 @@ class Accumulator:
                 logs=self.logs.get(t, []),
                 memory=self.memory.get(t),
             )
-            if not store_emitted and self.store_writes:
-                it.store = dict(self.store_writes)
+            if not store_emitted and store_payload:
+                it.store = dict(store_payload)
                 store_emitted = True
             intents.append(it)
 
         # Store changed but no robot target -> standalone store-only intent.
-        if self.store_writes and not store_emitted:
+        if store_payload and not store_emitted:
             intents.append(
-                Intent(city=city, robot=primary or "", commands=[], store=dict(self.store_writes))
+                Intent(city=city, robot=primary or "", commands=[], store=dict(store_payload))
             )
         return intents
